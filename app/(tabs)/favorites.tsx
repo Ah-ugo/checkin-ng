@@ -1,0 +1,617 @@
+import { Ionicons } from "@expo/vector-icons";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Image,
+  Modal,
+  Platform,
+  RefreshControl,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+
+const SavedAccommodationsScreen = () => {
+  const [favorites, setFavorites] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [filter, setFilter] = useState("all");
+  const [showFilterModal, setShowFilterModal] = useState(false);
+
+  // Mock fetch function - replace with actual API call
+  const fetchFavorites = async () => {
+    try {
+      setLoading(true);
+      // Simulating API call
+      // const response = await fetch('/api/users/favorites');
+      // const data = await response.json();
+
+      // Mock data based on the provided structure
+      const mockData = [
+        {
+          name: "Protea Hotel",
+          description: "Luxury hotel with excellent service",
+          accommodation_type: "hotel",
+          location: {
+            type: "Point",
+            coordinates: [10, 10],
+            address: "123 Main Street",
+          },
+          address: "123 Main Street",
+          city: "Cape Town",
+          state: "Western Cape",
+          country: "South Africa",
+          amenities: ["wifi", "pool", "gym", "restaurant"],
+          rooms: [
+            {
+              name: "Deluxe Room",
+              description: "Spacious room with city view",
+              price_per_night: 3000,
+              capacity: 3,
+              amenities: ["wifi", "tv", "minibar"],
+              images: [],
+              is_available: true,
+            },
+          ],
+          images: [
+            "https://res.cloudinary.com/dejeplzpv/image/upload/v1743038866/accommodation_images/lxts4lwb6ozyedvbrg8c.png",
+            "https://res.cloudinary.com/dejeplzpv/image/upload/v1743038867/accommodation_images/gtn744b33n09btk9nby1.png",
+          ],
+          rating: 4.5,
+          contact_email: "info@proteahotel.com",
+          contact_phone: "+27 21 123 4567",
+          _id: "67e4a889a055035652201734",
+          created_at: "2025-03-27T01:23:21.617000",
+          average_rating: 4.5,
+          reviews_count: 42,
+        },
+        {
+          name: "Mountain View Apartment",
+          description: "Cozy apartment with stunning mountain views",
+          accommodation_type: "apartment",
+          location: {
+            type: "Point",
+            coordinates: [12, 12],
+            address: "456 Mountain Road",
+          },
+          address: "456 Mountain Road",
+          city: "Johannesburg",
+          state: "Gauteng",
+          country: "South Africa",
+          amenities: ["wifi", "kitchen", "parking", "tv"],
+          rooms: [
+            {
+              name: "Entire Apartment",
+              description: "Fully equipped apartment",
+              price_per_night: 2000,
+              capacity: 4,
+              amenities: ["wifi", "kitchen", "tv"],
+              images: [],
+              is_available: true,
+            },
+          ],
+          images: [
+            "https://res.cloudinary.com/dejeplzpv/image/upload/v1747242531/accommodation_images/kwutdzug4arzlteqf9ob.png",
+          ],
+          rating: 4.2,
+          contact_email: "contact@mountainview.com",
+          contact_phone: "+27 11 987 6543",
+          _id: "67e4a889a055035652201735",
+          created_at: "2025-04-15T08:45:12.345000",
+          average_rating: 4.2,
+          reviews_count: 28,
+        },
+        {
+          name: "Beachfront Villa",
+          description: "Luxury villa with private beach access",
+          accommodation_type: "villa",
+          location: {
+            type: "Point",
+            coordinates: [15, 15],
+            address: "789 Beach Road",
+          },
+          address: "789 Beach Road",
+          city: "Durban",
+          state: "KwaZulu-Natal",
+          country: "South Africa",
+          amenities: ["wifi", "pool", "beach access", "parking"],
+          rooms: [
+            {
+              name: "Entire Villa",
+              description: "4 bedroom luxury villa",
+              price_per_night: 5000,
+              capacity: 8,
+              amenities: ["wifi", "pool", "kitchen"],
+              images: [],
+              is_available: true,
+            },
+          ],
+          images: [
+            "https://res.cloudinary.com/dejeplzpv/image/upload/v1747242532/accommodation_images/wqtbopx5tel3a7ihcnor.png",
+          ],
+          rating: 4.8,
+          contact_email: "bookings@beachvilla.com",
+          contact_phone: "+27 31 456 7890",
+          _id: "67e4a889a055035652201736",
+          created_at: "2025-05-10T12:30:45.678000",
+          average_rating: 4.8,
+          reviews_count: 65,
+        },
+      ];
+
+      setFavorites(mockData);
+    } catch (error) {
+      console.error("Error fetching favorites:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Toggle favorite status - replace with actual API calls
+  const toggleFavorite = async (accommodationId) => {
+    try {
+      // Check if already favorite
+      const isFavorite = favorites.some((item) => item._id === accommodationId);
+
+      if (isFavorite) {
+        // Remove favorite
+        // await fetch(`/api/users/favorites/${accommodationId}`, { method: 'DELETE' });
+        setFavorites((prev) =>
+          prev.filter((item) => item._id !== accommodationId)
+        );
+      } else {
+        // Add favorite
+        // await fetch('/api/users/favorites', {
+        //   method: 'POST',
+        //   headers: {
+        //     'Content-Type': 'application/json',
+        //   },
+        //   body: JSON.stringify({ accommodation_id: accommodationId })
+        // });
+        // In a real app, you would fetch the accommodation details here
+        // For now, we're just simulating by adding the first mock item
+        if (favorites.length > 0) {
+          setFavorites((prev) => [...prev, favorites[0]]);
+        }
+      }
+    } catch (error) {
+      console.error("Error toggling favorite:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchFavorites();
+  }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchFavorites();
+  };
+
+  const filteredFavorites =
+    filter === "all"
+      ? favorites
+      : favorites.filter((item) => item.accommodation_type === filter);
+
+  const renderAccommodationItem = ({ item }) => (
+    <View style={styles.accommodationCard}>
+      <Image
+        source={{ uri: item.images[0] }}
+        style={styles.accommodationImage}
+      />
+      <View style={styles.accommodationInfo}>
+        <View style={styles.accommodationHeader}>
+          <Text style={styles.accommodationTitle}>{item.name}</Text>
+          <TouchableOpacity onPress={() => toggleFavorite(item._id)}>
+            <Ionicons
+              name="heart"
+              size={24}
+              color="#ff4444"
+              style={styles.favoriteIcon}
+            />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.accommodationMeta}>
+          <Text style={styles.accommodationType}>
+            {item.accommodation_type.charAt(0).toUpperCase() +
+              item.accommodation_type.slice(1)}
+          </Text>
+          <View style={styles.ratingContainer}>
+            <Ionicons name="star" size={16} color="#FFC107" />
+            <Text style={styles.ratingText}>{item.average_rating}</Text>
+            <Text style={styles.reviewsText}>({item.reviews_count})</Text>
+          </View>
+        </View>
+
+        <Text style={styles.accommodationLocation}>
+          <Ionicons name="location" size={14} color="#666" />
+          {item.city}, {item.country}
+        </Text>
+
+        <Text style={styles.accommodationPrice}>
+          From R{item.rooms[0].price_per_night}/night
+        </Text>
+
+        <View style={styles.amenitiesContainer}>
+          {item.amenities.slice(0, 3).map((amenity, index) => (
+            <View key={index} style={styles.amenityPill}>
+              <Ionicons
+                name={
+                  amenity === "wifi"
+                    ? "wifi"
+                    : amenity === "pool"
+                    ? "water"
+                    : amenity === "gym"
+                    ? "fitness"
+                    : amenity === "restaurant"
+                    ? "restaurant"
+                    : amenity === "kitchen"
+                    ? "restaurant"
+                    : amenity === "parking"
+                    ? "car"
+                    : amenity === "tv"
+                    ? "tv"
+                    : "home"
+                }
+                size={14}
+                color="#3498db"
+              />
+              <Text style={styles.amenityText}>
+                {amenity.charAt(0).toUpperCase() + amenity.slice(1)}
+              </Text>
+            </View>
+          ))}
+          {item.amenities.length > 3 && (
+            <View style={styles.amenityPill}>
+              <Text style={styles.amenityText}>
+                +{item.amenities.length - 3} more
+              </Text>
+            </View>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Saved Accommodations</Text>
+        <TouchableOpacity
+          style={styles.filterButton}
+          onPress={() => setShowFilterModal(true)}
+        >
+          <Ionicons name="filter" size={20} color="#3498db" />
+        </TouchableOpacity>
+      </View>
+
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#3498db" />
+        </View>
+      ) : (
+        <FlatList
+          data={filteredFavorites}
+          renderItem={renderAccommodationItem}
+          keyExtractor={(item) => item._id}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="heart-dislike" size={48} color="#ccc" />
+              <Text style={styles.emptyText}>
+                No saved accommodations found
+              </Text>
+              <Text style={styles.emptySubtext}>
+                {filter !== "all"
+                  ? `Try changing your filter`
+                  : `Save your favorite places to see them here`}
+              </Text>
+            </View>
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#3498db"]}
+            />
+          }
+        />
+      )}
+
+      {/* Filter Modal */}
+      <Modal
+        visible={showFilterModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowFilterModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Filter Accommodations</Text>
+
+            <TouchableOpacity
+              style={[
+                styles.filterOption,
+                filter === "all" && styles.filterOptionSelected,
+              ]}
+              onPress={() => {
+                setFilter("all");
+                setShowFilterModal(false);
+              }}
+            >
+              <Text
+                style={[
+                  styles.filterOptionText,
+                  filter === "all" && styles.filterOptionTextSelected,
+                ]}
+              >
+                All Types
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.filterOption,
+                filter === "hotel" && styles.filterOptionSelected,
+              ]}
+              onPress={() => {
+                setFilter("hotel");
+                setShowFilterModal(false);
+              }}
+            >
+              <Text
+                style={[
+                  styles.filterOptionText,
+                  filter === "hotel" && styles.filterOptionTextSelected,
+                ]}
+              >
+                Hotels
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.filterOption,
+                filter === "apartment" && styles.filterOptionSelected,
+              ]}
+              onPress={() => {
+                setFilter("apartment");
+                setShowFilterModal(false);
+              }}
+            >
+              <Text
+                style={[
+                  styles.filterOptionText,
+                  filter === "apartment" && styles.filterOptionTextSelected,
+                ]}
+              >
+                Apartments
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.filterOption,
+                filter === "villa" && styles.filterOptionSelected,
+              ]}
+              onPress={() => {
+                setFilter("villa");
+                setShowFilterModal(false);
+              }}
+            >
+              <Text
+                style={[
+                  styles.filterOptionText,
+                  filter === "villa" && styles.filterOptionTextSelected,
+                ]}
+              >
+                Villas
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowFilterModal(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#f8f8f8",
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0e0e0",
+    backgroundColor: "#fff",
+    paddingTop: Platform.OS == "android" ? 30 : 0,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+  },
+  filterButton: {
+    padding: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  listContent: {
+    padding: 16,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 40,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: "#666",
+    marginTop: 16,
+    textAlign: "center",
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: "#999",
+    marginTop: 8,
+    textAlign: "center",
+  },
+  accommodationCard: {
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    marginBottom: 16,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  accommodationImage: {
+    width: "100%",
+    height: 180,
+  },
+  accommodationInfo: {
+    padding: 16,
+  },
+  accommodationHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  accommodationTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    flex: 1,
+  },
+  favoriteIcon: {
+    marginLeft: 8,
+  },
+  accommodationMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  accommodationType: {
+    fontSize: 14,
+    color: "#666",
+    marginRight: 16,
+  },
+  ratingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  ratingText: {
+    fontSize: 14,
+    fontWeight: "bold",
+    marginLeft: 4,
+  },
+  reviewsText: {
+    fontSize: 14,
+    color: "#666",
+    marginLeft: 4,
+  },
+  accommodationLocation: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 8,
+  },
+  accommodationPrice: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 12,
+    color: "#3498db",
+  },
+  amenitiesContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  amenityPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f0f8ff",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  amenityText: {
+    fontSize: 12,
+    color: "#3498db",
+    marginLeft: 4,
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  modalContent: {
+    width: "80%",
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 20,
+    textAlign: "center",
+  },
+  filterOption: {
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  filterOptionSelected: {
+    backgroundColor: "#3498db",
+    borderColor: "#3498db",
+  },
+  filterOptionText: {
+    fontSize: 16,
+    color: "#333",
+    textAlign: "center",
+  },
+  filterOptionTextSelected: {
+    color: "#fff",
+  },
+  modalCloseButton: {
+    marginTop: 16,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: "#e0e0e0",
+  },
+  modalCloseButtonText: {
+    fontSize: 16,
+    color: "#333",
+    textAlign: "center",
+  },
+});
+
+export default SavedAccommodationsScreen;
