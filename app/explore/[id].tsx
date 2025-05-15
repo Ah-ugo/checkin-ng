@@ -15,7 +15,7 @@ import {
   View,
 } from "react-native";
 
-// Mock data based on the provided JSON structure
+// Enhanced mock data with reviews
 const apartmentData = {
   name: "Luxury Downtown Apartment",
   description:
@@ -59,6 +59,41 @@ const apartmentData = {
   created_at: null,
   average_rating: 4.8,
   reviews_count: 156,
+  reviews: [
+    {
+      id: "rev1",
+      user: {
+        name: "John D.",
+        avatar: "https://randomuser.me/api/portraits/men/1.jpg",
+      },
+      rating: 5,
+      date: "2023-05-15",
+      comment:
+        "Absolutely fantastic stay! The apartment was even better than the photos. Perfect location and amazing amenities.",
+    },
+    {
+      id: "rev2",
+      user: {
+        name: "Sarah M.",
+        avatar: "https://randomuser.me/api/portraits/women/1.jpg",
+      },
+      rating: 4,
+      date: "2023-04-22",
+      comment:
+        "Great place overall. Clean and comfortable. The only minor issue was the noise from the street at night.",
+    },
+    {
+      id: "rev3",
+      user: {
+        name: "Michael T.",
+        avatar: "https://randomuser.me/api/portraits/men/2.jpg",
+      },
+      rating: 5,
+      date: "2023-03-10",
+      comment:
+        "This is my third time staying here and it's consistently excellent. The staff is wonderful and the rooms are always spotless.",
+    },
+  ],
 };
 
 // Amenity icon mapping
@@ -87,6 +122,7 @@ export default function ApartmentBookingApp() {
     paymentMethod: "card",
   });
   const [bookingId, setBookingId] = useState(null);
+  const [showAllReviews, setShowAllReviews] = useState(false);
 
   const handleRoomSelect = (roomId) => {
     setSelectedRoomId(roomId);
@@ -108,14 +144,15 @@ export default function ApartmentBookingApp() {
 
   const createBooking = () => {
     // Mock API call - would normally send data to backend
-    console.log({
+    const bookingPayload = {
       accommodation_id: apartmentData._id,
       room_id: selectedRoomId,
       check_in_date: bookingDetails.checkIn,
       check_out_date: bookingDetails.checkOut,
       guests: parseInt(bookingDetails.guests),
       special_requests: bookingDetails.specialRequests,
-    });
+    };
+    console.log("Creating booking:", bookingPayload);
 
     // Mock response
     setBookingId("booking_" + Math.random().toString(36).substr(2, 9));
@@ -124,12 +161,13 @@ export default function ApartmentBookingApp() {
 
   const initiatePayment = () => {
     // Mock API call for payment
-    console.log({
+    const paymentPayload = {
       booking_id: bookingId,
       payment_method: paymentDetails.paymentMethod,
       email: paymentDetails.email,
       callback_url: "app://payment-callback",
-    });
+    };
+    console.log("Initiating payment:", paymentPayload);
 
     // Show confirmation
     setCurrentStep(4);
@@ -138,6 +176,74 @@ export default function ApartmentBookingApp() {
   const selectedRoom = apartmentData.rooms.find(
     (room) => room.id === selectedRoomId
   );
+
+  const renderStars = (rating) => {
+    const stars = [];
+    for (let i = 1; i <= 5; i++) {
+      stars.push(
+        <Ionicons
+          key={i}
+          name={i <= rating ? "star" : "star-outline"}
+          size={16}
+          color={i <= rating ? "#FFC107" : "#ccc"}
+        />
+      );
+    }
+    return stars;
+  };
+
+  const renderReviews = () => {
+    const reviewsToShow = showAllReviews
+      ? apartmentData.reviews
+      : apartmentData.reviews.slice(0, 2);
+
+    return (
+      <View style={styles.reviewsContainer}>
+        <Text style={styles.sectionTitle}>Guest Reviews</Text>
+        <View style={styles.ratingSummary}>
+          <Text style={styles.averageRating}>
+            {apartmentData.average_rating}
+          </Text>
+          <View style={styles.starsContainer}>
+            {renderStars(Math.round(apartmentData.average_rating))}
+          </View>
+          <Text style={styles.reviewsCount}>
+            {apartmentData.reviews_count} reviews
+          </Text>
+        </View>
+
+        {reviewsToShow.map((review) => (
+          <View key={review.id} style={styles.reviewCard}>
+            <View style={styles.reviewHeader}>
+              <Image
+                source={{ uri: review.user.avatar }}
+                style={styles.avatar}
+              />
+              <View style={styles.reviewUserInfo}>
+                <Text style={styles.reviewUserName}>{review.user.name}</Text>
+                <View style={styles.reviewRating}>
+                  {renderStars(review.rating)}
+                  <Text style={styles.reviewDate}>{review.date}</Text>
+                </View>
+              </View>
+            </View>
+            <Text style={styles.reviewText}>{review.comment}</Text>
+          </View>
+        ))}
+
+        {apartmentData.reviews.length > 2 && (
+          <TouchableOpacity
+            style={styles.showMoreButton}
+            onPress={() => setShowAllReviews(!showAllReviews)}
+          >
+            <Text style={styles.showMoreText}>
+              {showAllReviews ? "Show Less Reviews" : "Show All Reviews"}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   const renderApartmentDetails = () => (
     <ScrollView style={styles.container}>
@@ -240,6 +346,9 @@ export default function ApartmentBookingApp() {
             ))}
           </View>
         </View>
+
+        {/* Reviews Section */}
+        {renderReviews()}
 
         {/* Available Rooms */}
         <View style={styles.roomsContainer}>
@@ -928,5 +1037,83 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 24,
     lineHeight: 24,
+  },
+  // Review-specific styles
+  reviewsContainer: {
+    marginBottom: 24,
+  },
+  ratingSummary: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  averageRating: {
+    fontSize: 24,
+    fontWeight: "bold",
+    marginRight: 8,
+  },
+  starsContainer: {
+    flexDirection: "row",
+    marginRight: 8,
+  },
+  reviewsCount: {
+    fontSize: 14,
+    color: "#666",
+  },
+  reviewCard: {
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  reviewHeader: {
+    flexDirection: "row",
+    marginBottom: 8,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+  },
+  reviewUserInfo: {
+    flex: 1,
+  },
+  reviewUserName: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 4,
+  },
+  reviewRating: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  reviewDate: {
+    fontSize: 12,
+    color: "#666",
+    marginLeft: 8,
+  },
+  reviewText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#333",
+  },
+  showMoreButton: {
+    marginTop: 8,
+    padding: 8,
+    alignItems: "center",
+  },
+  showMoreText: {
+    color: "#3498db",
+    fontSize: 14,
+    fontWeight: "bold",
   },
 });

@@ -1,5 +1,6 @@
 import AccommodationCard from "@/components/appcomponents/AccomodationCard";
 import { MaterialIcons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
   Animated,
@@ -65,7 +66,9 @@ export default function AppHeader({
   currentLocation = "San Francisco, CA",
   onLocationPress = () => {},
   onProfilePress = () => {},
-  onSearchPress = () => {},
+  onSearchPress = () => {
+    router.push("/search");
+  },
   onFilterChange = () => {},
 }) {
   const theme = useTheme();
@@ -474,6 +477,7 @@ export default function AppHeader({
                 fontFamily: "InterSemiBold",
                 paddingLeft: 25,
                 marginBottom: 15,
+                color: theme.colors.onSurface,
               }}
             >
               Popular

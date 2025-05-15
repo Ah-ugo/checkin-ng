@@ -160,7 +160,6 @@ export default function LoginScreen() {
           autoCapitalize="none"
           keyboardType="email-address"
         />
-
         <TextInput
           label="Password"
           value={password}
@@ -184,7 +183,11 @@ export default function LoginScreen() {
           style={styles.textInput}
         />
 
-        <TouchableOpacity>
+        <TouchableOpacity
+          onPress={() =>
+            router.push("/auth/ForgotPasswordScreen/forgot-password")
+          }
+        >
           <Text style={styles.forgotPassword}>Forgot password?</Text>
         </TouchableOpacity>
       </View>
