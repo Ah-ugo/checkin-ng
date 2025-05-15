@@ -1,5 +1,8 @@
+import { useAuth } from "@/context/AuthContext";
+import { accommodationsAPI } from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -15,177 +18,70 @@ import {
 } from "react-native";
 
 const SavedAccommodationsScreen = () => {
+  const { user } = useAuth();
   const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState("all");
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [error, setError] = useState(null);
 
-  // Mock fetch function - replace with actual API call
-  const fetchFavorites = async () => {
+  const fetchFavorites = useCallback(async () => {
+    if (!user) {
+      setError("Please log in to view saved accommodations");
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     try {
       setLoading(true);
-      // Simulating API call
-      // const response = await fetch('/api/users/favorites');
-      // const data = await response.json();
-
-      // Mock data based on the provided structure
-      const mockData = [
-        {
-          name: "Protea Hotel",
-          description: "Luxury hotel with excellent service",
-          accommodation_type: "hotel",
-          location: {
-            type: "Point",
-            coordinates: [10, 10],
-            address: "123 Main Street",
-          },
-          address: "123 Main Street",
-          city: "Cape Town",
-          state: "Western Cape",
-          country: "South Africa",
-          amenities: ["wifi", "pool", "gym", "restaurant"],
-          rooms: [
-            {
-              name: "Deluxe Room",
-              description: "Spacious room with city view",
-              price_per_night: 3000,
-              capacity: 3,
-              amenities: ["wifi", "tv", "minibar"],
-              images: [],
-              is_available: true,
-            },
-          ],
-          images: [
-            "https://res.cloudinary.com/dejeplzpv/image/upload/v1743038866/accommodation_images/lxts4lwb6ozyedvbrg8c.png",
-            "https://res.cloudinary.com/dejeplzpv/image/upload/v1743038867/accommodation_images/gtn744b33n09btk9nby1.png",
-          ],
-          rating: 4.5,
-          contact_email: "info@proteahotel.com",
-          contact_phone: "+27 21 123 4567",
-          _id: "67e4a889a055035652201734",
-          created_at: "2025-03-27T01:23:21.617000",
-          average_rating: 4.5,
-          reviews_count: 42,
-        },
-        {
-          name: "Mountain View Apartment",
-          description: "Cozy apartment with stunning mountain views",
-          accommodation_type: "apartment",
-          location: {
-            type: "Point",
-            coordinates: [12, 12],
-            address: "456 Mountain Road",
-          },
-          address: "456 Mountain Road",
-          city: "Johannesburg",
-          state: "Gauteng",
-          country: "South Africa",
-          amenities: ["wifi", "kitchen", "parking", "tv"],
-          rooms: [
-            {
-              name: "Entire Apartment",
-              description: "Fully equipped apartment",
-              price_per_night: 2000,
-              capacity: 4,
-              amenities: ["wifi", "kitchen", "tv"],
-              images: [],
-              is_available: true,
-            },
-          ],
-          images: [
-            "https://res.cloudinary.com/dejeplzpv/image/upload/v1747242531/accommodation_images/kwutdzug4arzlteqf9ob.png",
-          ],
-          rating: 4.2,
-          contact_email: "contact@mountainview.com",
-          contact_phone: "+27 11 987 6543",
-          _id: "67e4a889a055035652201735",
-          created_at: "2025-04-15T08:45:12.345000",
-          average_rating: 4.2,
-          reviews_count: 28,
-        },
-        {
-          name: "Beachfront Villa",
-          description: "Luxury villa with private beach access",
-          accommodation_type: "villa",
-          location: {
-            type: "Point",
-            coordinates: [15, 15],
-            address: "789 Beach Road",
-          },
-          address: "789 Beach Road",
-          city: "Durban",
-          state: "KwaZulu-Natal",
-          country: "South Africa",
-          amenities: ["wifi", "pool", "beach access", "parking"],
-          rooms: [
-            {
-              name: "Entire Villa",
-              description: "4 bedroom luxury villa",
-              price_per_night: 5000,
-              capacity: 8,
-              amenities: ["wifi", "pool", "kitchen"],
-              images: [],
-              is_available: true,
-            },
-          ],
-          images: [
-            "https://res.cloudinary.com/dejeplzpv/image/upload/v1747242532/accommodation_images/wqtbopx5tel3a7ihcnor.png",
-          ],
-          rating: 4.8,
-          contact_email: "bookings@beachvilla.com",
-          contact_phone: "+27 31 456 7890",
-          _id: "67e4a889a055035652201736",
-          created_at: "2025-05-10T12:30:45.678000",
-          average_rating: 4.8,
-          reviews_count: 65,
-        },
-      ];
-
-      setFavorites(mockData);
-    } catch (error) {
-      console.error("Error fetching favorites:", error);
+      setError(null);
+      const response = await accommodationsAPI.getFavorites();
+      setFavorites(response);
+    } catch (err) {
+      console.error("Error fetching favorites:", err);
+      setError("Failed to load saved accommodations. Please try again.");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [user]);
 
-  // Toggle favorite status - replace with actual API calls
+  useFocusEffect(
+    useCallback(() => {
+      fetchFavorites();
+    }, [fetchFavorites])
+  );
+
   const toggleFavorite = async (accommodationId) => {
+    if (!user) {
+      setError("Please log in to manage favorites");
+      return;
+    }
+
     try {
-      // Check if already favorite
+      setError(null);
       const isFavorite = favorites.some((item) => item._id === accommodationId);
 
       if (isFavorite) {
-        // Remove favorite
-        // await fetch(`/api/users/favorites/${accommodationId}`, { method: 'DELETE' });
+        await accommodationsAPI.removeFromFavorites(accommodationId);
         setFavorites((prev) =>
           prev.filter((item) => item._id !== accommodationId)
         );
       } else {
-        // Add favorite
-        // await fetch('/api/users/favorites', {
-        //   method: 'POST',
-        //   headers: {
-        //     'Content-Type': 'application/json',
-        //   },
-        //   body: JSON.stringify({ accommodation_id: accommodationId })
-        // });
-        // In a real app, you would fetch the accommodation details here
-        // For now, we're just simulating by adding the first mock item
-        if (favorites.length > 0) {
-          setFavorites((prev) => [...prev, favorites[0]]);
-        }
+        await accommodationsAPI.addToFavorites(accommodationId);
+        // Fetch the accommodation details to add to favorites (simplified for UX)
+        const accommodation = await accommodationsAPI.getAccommodation(
+          accommodationId
+        );
+        setFavorites((prev) => [...prev, accommodation]);
       }
-    } catch (error) {
-      console.error("Error toggling favorite:", error);
+    } catch (err) {
+      console.error("Error toggling favorite:", err);
+      setError("Failed to update favorite status. Please try again.");
     }
   };
-
-  useEffect(() => {
-    fetchFavorites();
-  }, []);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -198,9 +94,14 @@ const SavedAccommodationsScreen = () => {
       : favorites.filter((item) => item.accommodation_type === filter);
 
   const renderAccommodationItem = ({ item }) => (
-    <View style={styles.accommodationCard}>
+    <TouchableOpacity
+      style={styles.accommodationCard}
+      onPress={() => router.push(`/explore/${item._id}`)}
+    >
       <Image
-        source={{ uri: item.images[0] }}
+        source={{
+          uri: item.images[0] || "https://via.placeholder.com/800/500",
+        }}
         style={styles.accommodationImage}
       />
       <View style={styles.accommodationInfo}>
@@ -223,8 +124,10 @@ const SavedAccommodationsScreen = () => {
           </Text>
           <View style={styles.ratingContainer}>
             <Ionicons name="star" size={16} color="#FFC107" />
-            <Text style={styles.ratingText}>{item.average_rating}</Text>
-            <Text style={styles.reviewsText}>({item.reviews_count})</Text>
+            <Text style={styles.ratingText}>
+              {item.average_rating || "N/A"}
+            </Text>
+            <Text style={styles.reviewsText}>({item.reviews_count || 0})</Text>
           </View>
         </View>
 
@@ -234,7 +137,8 @@ const SavedAccommodationsScreen = () => {
         </Text>
 
         <Text style={styles.accommodationPrice}>
-          From R{item.rooms[0].price_per_night}/night
+          From R{item.rooms[0]?.price_per_night?.toLocaleString() || "N/A"}
+          /night
         </Text>
 
         <View style={styles.amenitiesContainer}>
@@ -256,6 +160,8 @@ const SavedAccommodationsScreen = () => {
                     ? "car"
                     : amenity === "tv"
                     ? "tv"
+                    : amenity === "beach access"
+                    ? "water"
                     : "home"
                 }
                 size={14}
@@ -275,7 +181,7 @@ const SavedAccommodationsScreen = () => {
           )}
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
@@ -293,6 +199,15 @@ const SavedAccommodationsScreen = () => {
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#3498db" />
+        </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchFavorites}>
+            <Text style={styles.retryButtonText}>
+              {user ? "Retry" : "Go to Login"}
+            </Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
@@ -323,7 +238,6 @@ const SavedAccommodationsScreen = () => {
         />
       )}
 
-      {/* Filter Modal */}
       <Modal
         visible={showFilterModal}
         transparent={true}
@@ -440,7 +354,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#e0e0e0",
     backgroundColor: "#fff",
-    paddingTop: Platform.OS == "android" ? 30 : 0,
+    paddingTop: Platform.OS === "android" ? 30 : 0,
   },
   headerTitle: {
     fontSize: 20,
@@ -453,6 +367,29 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  errorText: {
+    fontSize: 16,
+    color: "#c62828",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  retryButton: {
+    backgroundColor: "#3498db",
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  retryButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
   },
   listContent: {
     padding: 16,

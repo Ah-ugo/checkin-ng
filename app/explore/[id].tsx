@@ -1,5 +1,12 @@
+import {
+  AccommodationDetails,
+  accommodationsAPI,
+  BookingRequest,
+  Review,
+} from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useState } from "react";
+import { useLocalSearchParams } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
   Dimensions,
   FlatList,
@@ -15,86 +22,10 @@ import {
   View,
 } from "react-native";
 
-// Enhanced mock data with reviews
-const apartmentData = {
-  name: "Luxury Downtown Apartment",
-  description:
-    "Modern luxury apartment in the heart of downtown with stunning city views and premium amenities.",
-  accommodation_type: "apartment",
-  location: {
-    type: "Point",
-    coordinates: [10, 10],
-    address: "123 Main Street",
-  },
-  address: "123 Main Street, Suite 500",
-  city: "San Francisco",
-  state: "California",
-  country: "USA",
-  amenities: ["wifi", "pool", "gym", "parking", "kitchen", "tv"],
-  rooms: [
-    {
-      id: "room1",
-      name: "Master Suite",
-      price: 199,
-      capacity: 2,
-      description: "Spacious bedroom with king bed and en-suite bathroom",
-    },
-    {
-      id: "room2",
-      name: "Guest Room",
-      price: 149,
-      capacity: 2,
-      description: "Comfortable room with queen bed and city views",
-    },
-  ],
-  images: [
-    "https://picsum.photos/800/500",
-    "https://picsum.photos/800/501",
-    "https://picsum.photos/800/502",
-  ],
-  rating: 4.8,
-  contact_email: "contact@luxuryapartments.com",
-  contact_phone: "+1 (555) 123-4567",
-  _id: "67e4a8067e9acffbabf51f3a",
-  created_at: null,
-  average_rating: 4.8,
-  reviews_count: 156,
-  reviews: [
-    {
-      id: "rev1",
-      user: {
-        name: "John D.",
-        avatar: "https://randomuser.me/api/portraits/men/1.jpg",
-      },
-      rating: 5,
-      date: "2023-05-15",
-      comment:
-        "Absolutely fantastic stay! The apartment was even better than the photos. Perfect location and amazing amenities.",
-    },
-    {
-      id: "rev2",
-      user: {
-        name: "Sarah M.",
-        avatar: "https://randomuser.me/api/portraits/women/1.jpg",
-      },
-      rating: 4,
-      date: "2023-04-22",
-      comment:
-        "Great place overall. Clean and comfortable. The only minor issue was the noise from the street at night.",
-    },
-    {
-      id: "rev3",
-      user: {
-        name: "Michael T.",
-        avatar: "https://randomuser.me/api/portraits/men/2.jpg",
-      },
-      rating: 5,
-      date: "2023-03-10",
-      comment:
-        "This is my third time staying here and it's consistently excellent. The staff is wonderful and the rooms are always spotless.",
-    },
-  ],
-};
+// Extend AccommodationDetails to include reviews
+interface ExtendedAccommodationDetails extends AccommodationDetails {
+  reviews: Review[];
+}
 
 // Amenity icon mapping
 const amenityIcons = {
@@ -108,7 +39,8 @@ const amenityIcons = {
 
 const { width } = Dimensions.get("window");
 
-export default function ApartmentBookingApp() {
+export default function ApartmentDetail() {
+  const { id } = useLocalSearchParams(); // Get the apartment ID from route params
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedRoomId, setSelectedRoomId] = useState("");
   const [bookingDetails, setBookingDetails] = useState({
@@ -121,63 +53,122 @@ export default function ApartmentBookingApp() {
     email: "",
     paymentMethod: "card",
   });
-  const [bookingId, setBookingId] = useState(null);
+  const [bookingId, setBookingId] = useState<string | null>(null);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  const [apartmentData, setApartmentData] =
+    useState<ExtendedAccommodationDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleRoomSelect = (roomId) => {
+  // Fetch apartment details and reviews on component mount
+  useEffect(() => {
+    const fetchApartmentDetails = async () => {
+      try {
+        setLoading(true);
+        const [accommodationResponse, reviewsResponse] = await Promise.all([
+          accommodationsAPI.getAccommodation(id as string),
+          accommodationsAPI.getAccommodationReviews(id as string, {
+            limit: 10,
+          }),
+        ]);
+
+        // Map reviews to match mock data structure
+        const mappedReviews = reviewsResponse.results.map((review) => ({
+          ...review,
+          id: review._id,
+          user: {
+            name: `${review.user.first_name} ${review.user.last_name.charAt(
+              0
+            )}.`,
+            avatar:
+              review.user.profile_image_url ||
+              "https://randomuser.me/api/portraits/men/1.jpg",
+          },
+          date: new Date(review.created_at).toISOString().split("T")[0], // Format as YYYY-MM-DD
+        }));
+
+        setApartmentData({
+          ...accommodationResponse,
+          reviews: mappedReviews,
+          average_rating: reviewsResponse.average_rating,
+          reviews_count: reviewsResponse.reviews_count,
+        });
+        setLoading(false);
+      } catch (err) {
+        setError("Failed to load apartment details");
+        setLoading(false);
+        console.error("Fetch error:", err);
+      }
+    };
+
+    if (id) {
+      fetchApartmentDetails();
+    } else {
+      setError("Invalid apartment ID");
+      setLoading(false);
+    }
+  }, [id]);
+
+  const handleRoomSelect = (roomId: string) => {
     setSelectedRoomId(roomId);
   };
 
-  const handleBookingChange = (name, value) => {
+  const handleBookingChange = (name: string, value: string) => {
     setBookingDetails((prev) => ({
       ...prev,
       [name]: value,
     }));
   };
 
-  const handlePaymentChange = (name, value) => {
+  const handlePaymentChange = (name: string, value: string) => {
     setPaymentDetails((prev) => ({
       ...prev,
       [name]: value,
     }));
   };
 
-  const createBooking = () => {
-    // Mock API call - would normally send data to backend
-    const bookingPayload = {
-      accommodation_id: apartmentData._id,
-      room_id: selectedRoomId,
-      check_in_date: bookingDetails.checkIn,
-      check_out_date: bookingDetails.checkOut,
-      guests: parseInt(bookingDetails.guests),
-      special_requests: bookingDetails.specialRequests,
-    };
-    console.log("Creating booking:", bookingPayload);
-
-    // Mock response
-    setBookingId("booking_" + Math.random().toString(36).substr(2, 9));
-    setCurrentStep(3);
+  const createBooking = async () => {
+    if (!apartmentData) return;
+    try {
+      const bookingPayload: BookingRequest = {
+        accommodation_id: apartmentData._id,
+        room_id: selectedRoomId,
+        check_in_date: bookingDetails.checkIn,
+        check_out_date: bookingDetails.checkOut,
+        guests: parseInt(bookingDetails.guests),
+        special_requests: bookingDetails.specialRequests,
+      };
+      const response = await accommodationsAPI.createBooking(bookingPayload);
+      setBookingId(response._id);
+      setCurrentStep(3);
+    } catch (err) {
+      console.error("Booking error:", err);
+      setError("Failed to create booking");
+    }
   };
 
-  const initiatePayment = () => {
-    // Mock API call for payment
-    const paymentPayload = {
-      booking_id: bookingId,
-      payment_method: paymentDetails.paymentMethod,
-      email: paymentDetails.email,
-      callback_url: "app://payment-callback",
-    };
-    console.log("Initiating payment:", paymentPayload);
-
-    // Show confirmation
-    setCurrentStep(4);
+  const initiatePayment = async () => {
+    if (!bookingId) return;
+    try {
+      const paymentPayload = {
+        booking_id: bookingId,
+        payment_method: paymentDetails.paymentMethod,
+        email: paymentDetails.email,
+        callback_url: "app://payment-callback",
+      };
+      await accommodationsAPI.initiatePayment(paymentPayload);
+      setCurrentStep(4);
+    } catch (err) {
+      console.error("Payment error:", err);
+      setError("Failed to initiate payment");
+    }
   };
 
-  const selectedRoom = apartmentData.rooms.find(
-    (room) => room.id === selectedRoomId
+  const selectedRoom = apartmentData?.rooms.find(
+    (room) => (room._id || room.name) === selectedRoomId
   );
 
-  const renderStars = (rating) => {
+  const renderStars = (rating: number) => {
     const stars = [];
     for (let i = 1; i <= 5; i++) {
       stars.push(
@@ -193,6 +184,7 @@ export default function ApartmentBookingApp() {
   };
 
   const renderReviews = () => {
+    if (!apartmentData?.reviews) return null;
     const reviewsToShow = showAllReviews
       ? apartmentData.reviews
       : apartmentData.reviews.slice(0, 2);
@@ -202,7 +194,7 @@ export default function ApartmentBookingApp() {
         <Text style={styles.sectionTitle}>Guest Reviews</Text>
         <View style={styles.ratingSummary}>
           <Text style={styles.averageRating}>
-            {apartmentData.average_rating}
+            {apartmentData.average_rating.toFixed(1)}
           </Text>
           <View style={styles.starsContainer}>
             {renderStars(Math.round(apartmentData.average_rating))}
@@ -245,154 +237,193 @@ export default function ApartmentBookingApp() {
     );
   };
 
-  const renderApartmentDetails = () => (
-    <ScrollView style={styles.container}>
-      {/* Image Gallery */}
-      <View style={styles.imageContainer}>
-        <FlatList
-          data={apartmentData.images}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          keyExtractor={(item, index) => index.toString()}
-          renderItem={({ item }) => (
-            <Image
-              source={{ uri: item }}
-              style={styles.image}
-              resizeMode="cover"
-            />
-          )}
-        />
-        <View style={styles.imageDotContainer}>
-          {apartmentData.images.map((_, index) => (
-            <View
-              key={index}
-              style={[
-                styles.imageDot,
-                {
-                  backgroundColor:
-                    index === 0 ? "#fff" : "rgba(255, 255, 255, 0.5)",
-                },
-              ]}
-            />
-          ))}
+  const renderApartmentDetails = () => {
+    if (loading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading...</Text>
         </View>
-      </View>
+      );
+    }
 
-      {/* Apartment Info */}
-      <View style={styles.infoContainer}>
-        <Text style={styles.title}>{apartmentData.name}</Text>
-
-        <View style={styles.locationContainer}>
-          <Ionicons name="location" size={16} color="#666" />
-          <Text style={styles.locationText}>
-            {apartmentData.address}, {apartmentData.city}, {apartmentData.state}
-          </Text>
+    if (error || !apartmentData) {
+      return (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error || "No data available"}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => {
+              setLoading(true);
+              setError(null);
+              // Trigger re-fetch by resetting the effect
+              setApartmentData(null);
+            }}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
         </View>
+      );
+    }
 
-        <View style={styles.ratingContainer}>
-          <Ionicons name="star" size={16} color="#FFC107" />
-          <Text style={styles.ratingText}>{apartmentData.rating}</Text>
-          <Text style={styles.reviewsText}>
-            ({apartmentData.reviews_count} reviews)
-          </Text>
-        </View>
-
-        <Text style={styles.description}>{apartmentData.description}</Text>
-
-        {/* Contact Info */}
-        <View style={styles.contactContainer}>
-          <Text style={styles.sectionTitle}>Contact Information</Text>
-          <View style={styles.contactRow}>
-            <Ionicons
-              name="mail"
-              size={18}
-              color="#666"
-              style={styles.contactIcon}
-            />
-            <Text style={styles.contactText}>
-              {apartmentData.contact_email}
-            </Text>
-          </View>
-          <View style={styles.contactRow}>
-            <Ionicons
-              name="call"
-              size={18}
-              color="#666"
-              style={styles.contactIcon}
-            />
-            <Text style={styles.contactText}>
-              {apartmentData.contact_phone}
-            </Text>
-          </View>
-        </View>
-
-        {/* Amenities */}
-        <View style={styles.amenitiesContainer}>
-          <Text style={styles.sectionTitle}>Amenities</Text>
-          <View style={styles.amenitiesGrid}>
-            {apartmentData.amenities.map((amenity) => (
-              <View key={amenity} style={styles.amenityItem}>
-                <Ionicons
-                  name={amenityIcons[amenity] || "home"}
-                  size={20}
-                  color="#555"
-                  style={styles.amenityIcon}
-                />
-                <Text style={styles.amenityText}>
-                  {amenity.charAt(0).toUpperCase() + amenity.slice(1)}
-                </Text>
-              </View>
+    return (
+      <ScrollView style={styles.container}>
+        {/* Image Gallery */}
+        <View style={styles.imageContainer}>
+          <FlatList
+            data={apartmentData.images}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item, index) => index.toString()}
+            renderItem={({ item }) => (
+              <Image
+                source={{ uri: item }}
+                style={styles.image}
+                resizeMode="cover"
+              />
+            )}
+          />
+          <View style={styles.imageDotContainer}>
+            {apartmentData.images.map((_, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.imageDot,
+                  {
+                    backgroundColor:
+                      index === 0 ? "#fff" : "rgba(255, 255, 255, 0.5)",
+                  },
+                ]}
+              />
             ))}
           </View>
         </View>
 
-        {/* Reviews Section */}
-        {renderReviews()}
+        {/* Apartment Info */}
+        <View style={styles.infoContainer}>
+          <Text style={styles.title}>{apartmentData.name}</Text>
 
-        {/* Available Rooms */}
-        <View style={styles.roomsContainer}>
-          <Text style={styles.sectionTitle}>Available Rooms</Text>
-          {apartmentData.rooms.map((room) => (
-            <TouchableOpacity
-              key={room.id}
-              style={[
-                styles.roomCard,
-                selectedRoomId === room.id && styles.selectedRoomCard,
-              ]}
-              onPress={() => handleRoomSelect(room.id)}
-            >
-              <View style={styles.roomInfo}>
-                <Text style={styles.roomName}>{room.name}</Text>
-                <Text style={styles.roomDescription}>{room.description}</Text>
-                <View style={styles.capacityContainer}>
-                  <Ionicons name="people" size={16} color="#666" />
-                  <Text style={styles.capacityText}>
-                    Up to {room.capacity} guests
+          <View style={styles.locationContainer}>
+            <Ionicons name="location" size={16} color="#666" />
+            <Text style={styles.locationText}>
+              {apartmentData.address}, {apartmentData.city},{" "}
+              {apartmentData.state}
+            </Text>
+          </View>
+
+          <View style={styles.ratingContainer}>
+            <Ionicons name="star" size={16} color="#FFC107" />
+            <Text style={styles.ratingText}>
+              {apartmentData.rating.toFixed(1)}
+            </Text>
+            <Text style={styles.reviewsText}>
+              ({apartmentData.reviews_count} reviews)
+            </Text>
+          </View>
+
+          <Text style={styles.description}>{apartmentData.description}</Text>
+
+          {/* Contact Info */}
+          <View style={styles.contactContainer}>
+            <Text style={styles.sectionTitle}>Contact Information</Text>
+            <View style={styles.contactRow}>
+              <Ionicons
+                name="mail"
+                size={18}
+                color="#666"
+                style={styles.contactIcon}
+              />
+              <Text style={styles.contactText}>
+                {apartmentData.contact_email}
+              </Text>
+            </View>
+            <View style={styles.contactRow}>
+              <Ionicons
+                name="call"
+                size={18}
+                color="#666"
+                style={styles.contactIcon}
+              />
+              <Text style={styles.contactText}>
+                {apartmentData.contact_phone}
+              </Text>
+            </View>
+          </View>
+
+          {/* Amenities */}
+          <View style={styles.amenitiesContainer}>
+            <Text style={styles.sectionTitle}>Amenities</Text>
+            <View style={styles.amenitiesGrid}>
+              {apartmentData.amenities.map((amenity) => (
+                <View key={amenity} style={styles.amenityItem}>
+                  <Ionicons
+                    name={amenityIcons[amenity] || "home"}
+                    size={20}
+                    color="#555"
+                    style={styles.amenityIcon}
+                  />
+                  <Text style={styles.amenityText}>
+                    {amenity.charAt(0).toUpperCase() + amenity.slice(1)}
                   </Text>
                 </View>
-              </View>
-              <View style={styles.priceContainer}>
-                <Text style={styles.priceText}>${room.price}</Text>
-                <Text style={styles.priceSubtext}>per night</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
+              ))}
+            </View>
+          </View>
 
-        <TouchableOpacity
-          style={[
-            styles.continueButton,
-            !selectedRoomId && styles.disabledButton,
-          ]}
-          disabled={!selectedRoomId}
-          onPress={() => setCurrentStep(2)}
-        >
-          <Text style={styles.continueButtonText}>Continue to Booking</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
-  );
+          {/* Reviews Section */}
+          {renderReviews()}
+
+          {/* Available Rooms */}
+          <View style={styles.roomsContainer}>
+            <Text style={styles.sectionTitle}>Available Rooms</Text>
+            {apartmentData.rooms.map((room, index) => {
+              const roomId = room._id || room.name || `room-${index}`; // Fallback ID
+              return (
+                <TouchableOpacity
+                  key={roomId}
+                  style={[
+                    styles.roomCard,
+                    selectedRoomId === roomId && styles.selectedRoomCard,
+                  ]}
+                  onPress={() => handleRoomSelect(roomId)}
+                >
+                  <View style={styles.roomInfo}>
+                    <Text style={styles.roomName}>{room.name}</Text>
+                    <Text style={styles.roomDescription}>
+                      {room.description || "No description available"}
+                    </Text>
+                    <View style={styles.capacityContainer}>
+                      <Ionicons name="people" size={16} color="#666" />
+                      <Text style={styles.capacityText}>
+                        Up to {room.capacity} guests
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.priceContainer}>
+                    <Text style={styles.priceText}>
+                      ${room.price_per_night}
+                    </Text>
+                    <Text style={styles.priceSubtext}>per night</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <TouchableOpacity
+            style={[
+              styles.continueButton,
+              !selectedRoomId && styles.disabledButton,
+            ]}
+            disabled={!selectedRoomId}
+            onPress={() => setCurrentStep(2)}
+          >
+            <Text style={styles.continueButtonText}>Continue to Booking</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    );
+  };
 
   const renderBookingForm = () => (
     <ScrollView style={styles.container}>
@@ -411,7 +442,7 @@ export default function ApartmentBookingApp() {
           <View style={styles.selectedRoomSummary}>
             <Text style={styles.selectedRoomName}>{selectedRoom.name}</Text>
             <Text style={styles.selectedRoomPrice}>
-              ${selectedRoom.price} per night
+              ${selectedRoom.price_per_night} per night
             </Text>
           </View>
         )}
@@ -600,7 +631,7 @@ export default function ApartmentBookingApp() {
         <View style={styles.bookingSummary}>
           <Text style={styles.bookingSummaryTitle}>Booking Details</Text>
           <Text style={styles.bookingId}>Booking ID: {bookingId}</Text>
-          <Text style={styles.summaryText}>{apartmentData.name}</Text>
+          <Text style={styles.summaryText}>{apartmentData?.name}</Text>
           <Text style={styles.summaryText}>{selectedRoom?.name}</Text>
           <Text style={styles.summaryText}>
             Check-in: {bookingDetails.checkIn}
@@ -686,6 +717,38 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f8f8f8",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    fontSize: 16,
+    color: "#333",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  errorText: {
+    fontSize: 16,
+    color: "#d32f2f",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  retryButton: {
+    backgroundColor: "#3498db",
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  retryButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
   },
   progressBarContainer: {
     padding: 16,
@@ -836,7 +899,7 @@ const styles = StyleSheet.create({
   amenityIcon: {
     marginRight: 8,
   },
-  amenityText: {
+  ruiText: {
     fontSize: 14,
     color: "#333",
   },
@@ -1038,7 +1101,6 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     lineHeight: 24,
   },
-  // Review-specific styles
   reviewsContainer: {
     marginBottom: 24,
   },

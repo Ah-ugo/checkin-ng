@@ -1,7 +1,15 @@
+import { useAuth } from "@/context/AuthContext";
 import AntDesign from "@expo/vector-icons/AntDesign";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { Button, TextInput, useTheme } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -12,9 +20,28 @@ export default function LoginScreen() {
   const theme = useTheme();
   const router = useRouter();
 
-  const handleSignIn = () => {
-    router.push("/(tabs)");
-    console.log("sign in");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { login } = useAuth();
+
+  const handleSignIn = async () => {
+    if (!email || !password) {
+      Alert.alert("Error", "Please fill in all fields");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await login(email, password);
+      // No need to navigate here - AuthContext handles navigation after login
+    } catch (error: any) {
+      let errorMessage = "Failed to log in. Please try again.";
+      if (error.response && error.response.data && error.response.data.detail) {
+        errorMessage = error.response.data.detail;
+      }
+      Alert.alert("Login Failed", errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSignInWithGoogle = () => {
@@ -195,7 +222,11 @@ export default function LoginScreen() {
         style={styles.signInButton}
         onPress={handleSignIn}
       >
-        Sign In
+        {isSubmitting ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          "Sign In"
+        )}
       </Button>
 
       <View style={styles.dividerContainer}>

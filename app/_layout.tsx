@@ -7,6 +7,8 @@ import { MD3DarkTheme, MD3LightTheme, PaperProvider } from "react-native-paper";
 import "react-native-reanimated";
 import { createTamagui, TamaguiProvider } from "tamagui";
 
+import { AuthProvider } from "@/context/AuthContext";
+import { FavoritesProvider } from "@/context/FavoritesContext";
 import { useColorScheme } from "@/hooks/useColorScheme";
 
 const config = createTamagui(defaultConfig);
@@ -32,17 +34,21 @@ export default function RootLayout() {
   }
 
   return (
-    <PaperProvider theme={paperTheme}>
-      <TamaguiProvider config={config}>
-        {/* <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}> */}
-        {/* <Stack>
+    <AuthProvider>
+      <FavoritesProvider>
+        <PaperProvider theme={paperTheme}>
+          <TamaguiProvider config={config}>
+            {/* <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}> */}
+            {/* <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="+not-found" />
         </Stack> */}
-        <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
-        <Slot />
-        {/* </ThemeProvider> */}
-      </TamaguiProvider>
-    </PaperProvider>
+            <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+            <Slot />
+            {/* </ThemeProvider> */}
+          </TamaguiProvider>
+        </PaperProvider>
+      </FavoritesProvider>
+    </AuthProvider>
   );
 }

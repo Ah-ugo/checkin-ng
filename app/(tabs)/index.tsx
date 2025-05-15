@@ -1,8 +1,14 @@
 import AccommodationCard from "@/components/appcomponents/AccomodationCard";
+import { useAuth } from "@/context/AuthContext";
+import { useFavorites } from "@/context/FavoritesContext";
+import { AccommodationDetails, accommodationsAPI } from "@/services/api";
 import { MaterialIcons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import React, { useRef, useState } from "react";
+import * as Location from "expo-location";
+import { router, useFocusEffect } from "expo-router";
+import { debounce } from "lodash";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Dimensions,
   ScrollView,
@@ -17,65 +23,41 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
+interface Accommodation extends AccommodationDetails {}
+
 const { width } = Dimensions.get("window");
 
-const item = {
-  name: "Protea",
-  description: "string",
-  accommodation_type: "hotel",
-  location: {
-    type: "Point",
-    coordinates: [10, 10],
-    address: "string",
-  },
-  address: "string",
-  city: "string",
-  state: "string",
-  country: "string",
-  amenities: [],
-  rooms: [
-    {
-      name: "bluu",
-      description: null,
-      price_per_night: 3000,
-      capacity: 3,
-      amenities: [],
-      images: [],
-      is_available: true,
-    },
-  ],
-  images: [
-    "https://res.cloudinary.com/dejeplzpv/image/upload/v1743038866/accommodation_images/lxts4lwb6ozyedvbrg8c.png",
-    "https://res.cloudinary.com/dejeplzpv/image/upload/v1743038867/accommodation_images/gtn744b33n09btk9nby1.png",
-  ],
-  rating: 0,
-  contact_email: "string",
-  contact_phone: "string",
-  _id: "67e4a889a055035652201734",
-  created_at: "2025-03-27T01:23:21.617000",
-  average_rating: 0,
-  reviews_count: 0,
+// In-memory cache
+let cachedData = {
+  popular: [] as Accommodation[],
+  recommended: [] as Accommodation[],
+  nearby: [] as Accommodation[],
+  hotels: [] as Accommodation[],
+  lastFetch: 0,
 };
 
-export default function AppHeader({
-  userProfile = {
-    name: "John Doe",
-    avatar: "https://randomuser.me/api/portraits/men/32.jpg",
-    hasNotifications: true,
-  },
-  currentLocation = "San Francisco, CA",
-  onLocationPress = () => {},
-  onProfilePress = () => {},
-  onSearchPress = () => {
-    router.push("/search");
-  },
-  onFilterChange = () => {},
-}) {
+export default function HomeScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const { fetchFavorites, isFavorited } = useFavorites();
   const scrollY = useRef(new Animated.Value(0)).current;
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedFilters, setSelectedFilters] = useState(["All"]);
+  const [selectedFilters, setSelectedFilters] = useState<string[]>(["all"]);
+  const [currentLocation, setCurrentLocation] = useState("Loading location...");
+  const [popularAccommodations, setPopularAccommodations] = useState<
+    Accommodation[]
+  >([]);
+  const [recommendedAccommodations, setRecommendedAccommodations] = useState<
+    Accommodation[]
+  >([]);
+  const [nearbyAccommodations, setNearbyAccommodations] = useState<
+    Accommodation[]
+  >([]);
+  const [hotels, setHotels] = useState<Accommodation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const accommodationTypes = [
     { id: "all", label: "All", icon: "home" },
@@ -83,14 +65,6 @@ export default function AppHeader({
     { id: "apartment", label: "Apartments", icon: "office-building" },
     { id: "hostel", label: "Hostels", icon: "home-group" },
     { id: "lodge", label: "Lodges", icon: "pine-tree" },
-    { id: "villa", label: "Villas", icon: "home-modern" },
-    { id: "resort", label: "Resorts", icon: "palm-tree" },
-  ];
-
-  const priceRanges = [
-    { id: "budget", label: "$" },
-    { id: "mid", label: "$$" },
-    { id: "luxury", label: "$$$" },
   ];
 
   const headerHeight = 180 + insets.top;
@@ -115,82 +89,15 @@ export default function AppHeader({
   const CARD_WIDTH = width * 0.75;
   const SPACING = 10;
 
-  const scrollViewRef = useRef(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const scrollX = useRef(new Animated.Value(0)).current;
-
-  const handleScroll = Animated.event(
-    [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-    { useNativeDriver: false }
-  );
-
-  const scrollToIndex = (index: any) => {
-    if (scrollViewRef.current) {
-      const x = index * (CARD_WIDTH + SPACING);
-      scrollViewRef.current.scrollTo({ x, animated: true });
-    }
-  };
-
-  const handleScrollEnd = (event: any) => {
-    const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffsetX / (CARD_WIDTH + SPACING));
-    setCurrentIndex(index);
-  };
-
-  const handleFilterToggle = (filterId: any) => {
-    let newFilters;
-
-    if (filterId === "all") {
-      newFilters = ["All"];
-    } else {
-      // Remove "All" when selecting a specific filter
-      newFilters = selectedFilters.filter((f) => f !== "All");
-
-      if (selectedFilters.includes(filterId)) {
-        newFilters = newFilters.filter((f) => f !== filterId);
-        // If no filters left, select "All"
-        if (newFilters.length === 0) {
-          newFilters = ["All"];
-        }
-      } else {
-        newFilters.push(filterId);
-      }
-    }
-
-    setSelectedFilters(newFilters);
-    onFilterChange(newFilters);
-  };
-
-  const isPriceFilterSelected = (id: string) => {
-    return selectedFilters.includes(id);
-  };
-
-  const onChangeSearch = (query: string) => {
-    setSearchQuery(query);
-  };
-
   const styles = StyleSheet.create({
     container: {
       backgroundColor: theme.colors.background,
+      flex: 1,
     },
     headerContainer: {
       height: headerHeight,
       backgroundColor: theme.colors.background,
       zIndex: 1,
-    },
-    headerBackground: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      height: headerHeight,
-    },
-    blurView: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      height: 60 + insets.top,
     },
     headerContent: {
       paddingTop: insets.top + 10,
@@ -205,18 +112,14 @@ export default function AppHeader({
     locationContainer: {
       flexDirection: "row",
       alignItems: "center",
-    },
-    locationLabel: {
-      fontFamily: "InterRegular",
-      fontSize: 12,
-      color: theme.colors.onSurfaceVariant,
-      marginBottom: 2,
+      maxWidth: width * 0.6,
     },
     locationText: {
       fontFamily: "InterMedium",
       fontSize: 16,
       color: theme.colors.onSurface,
       marginLeft: 4,
+      flexShrink: 1,
     },
     profileContainer: {
       position: "relative",
@@ -231,31 +134,18 @@ export default function AppHeader({
       marginBottom: 16,
     },
     searchBar: {
-      elevation: 0,
       backgroundColor: theme.colors.surfaceVariant,
       borderRadius: 16,
       paddingVertical: 1,
-      // height: 48,
     },
-    filterContainer: {
-      flexDirection: "row",
-      flexWrap: "wrap",
+    filterSection: {
+      marginBottom: 12,
     },
     filterScrollContainer: {
       flexGrow: 0,
       paddingLeft: 5,
       paddingRight: 10,
       marginBottom: 8,
-    },
-    filterSection: {
-      marginBottom: 12,
-    },
-    sectionLabel: {
-      fontFamily: "InterMedium",
-      fontSize: 14,
-      color: theme.colors.onSurfaceVariant,
-      marginBottom: 8,
-      marginLeft: 16,
     },
     chip: {
       marginRight: 8,
@@ -268,23 +158,6 @@ export default function AppHeader({
     chipLabel: {
       fontFamily: "InterMedium",
       fontSize: 13,
-    },
-    chipIcon: {
-      marginRight: 4,
-    },
-    priceChip: {
-      marginRight: 8,
-      height: 36,
-      borderRadius: 18,
-    },
-    priceChipSelected: {
-      backgroundColor: theme.colors.primaryContainer,
-    },
-    divider: {
-      height: 1,
-      backgroundColor: theme.colors.outlineVariant,
-      marginVertical: 8,
-      marginHorizontal: 16,
     },
     transparentHeader: {
       position: "absolute",
@@ -299,58 +172,436 @@ export default function AppHeader({
       paddingHorizontal: 16,
       zIndex: 10,
     },
-    transparentTitle: {
-      fontFamily: "InterSemiBold",
-      fontSize: 18,
-      color: theme.colors.onSurface,
-    },
     scrollContent: {
       paddingTop: 20,
-      // paddingLeft: 20,
-      // Your content goes here
-      // This is just a placeholder to show scrolling behavior
-      // height: 1000,
     },
     scrollViewContent: {
       paddingLeft: SPACING * 2,
       paddingRight: SPACING,
       alignItems: "center",
     },
-    dummyContent: {
-      padding: 16,
-    },
-    dummyText: {
-      fontFamily: "InterRegular",
-      fontSize: 16,
-      color: theme.colors.onSurface,
-    },
     cardContainer: {
       width: CARD_WIDTH,
       marginRight: SPACING,
     },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    errorContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 16,
+    },
+    errorText: {
+      fontSize: 16,
+      color: theme.colors.error,
+      marginBottom: 16,
+      textAlign: "center",
+    },
+    retryButton: {
+      backgroundColor: theme.colors.primary,
+      borderRadius: 8,
+      paddingVertical: 12,
+      paddingHorizontal: 24,
+    },
+    retryButtonText: {
+      color: theme.colors.onPrimary,
+      fontSize: 16,
+      fontWeight: "bold",
+    },
+    sectionTitle: {
+      fontSize: 20,
+      fontFamily: "InterSemiBold",
+      paddingLeft: 25,
+      marginBottom: 15,
+      color: theme.colors.onSurface,
+    },
   });
+
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const scrollX = useRef(new Animated.Value(0)).current;
+
+  const handleScroll = Animated.event(
+    [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+    { useNativeDriver: false }
+  );
+
+  const scrollToIndex = useCallback((index: number) => {
+    if (scrollViewRef.current) {
+      const x = index * (CARD_WIDTH + SPACING);
+      scrollViewRef.current.scrollTo({ x, animated: true });
+    }
+  }, []);
+
+  const handleScrollEnd = useCallback((event: any) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / (CARD_WIDTH + SPACING));
+    setCurrentIndex(index);
+  }, []);
+
+  const fetchLocation = useMemo(
+    () =>
+      debounce(async () => {
+        setLocationLoading(true);
+        try {
+          let { status } = await Location.requestForegroundPermissionsAsync();
+          if (status !== "granted") {
+            setCurrentLocation("Location permission denied");
+            return null;
+          }
+
+          let location = await Location.getCurrentPositionAsync({});
+          const { latitude, longitude } = location.coords;
+
+          const addressResponse = await Location.reverseGeocodeAsync({
+            latitude,
+            longitude,
+          });
+
+          if (addressResponse && addressResponse.length > 0) {
+            const address = addressResponse[0];
+            const formattedAddress = `${address.city || "Unknown City"}, ${
+              address.region || address.country || "Unknown Region"
+            }`;
+            setCurrentLocation((prev) =>
+              prev !== formattedAddress ? formattedAddress : prev
+            );
+            return { latitude, longitude };
+          } else {
+            setCurrentLocation(user?.location?.address || "Unknown Location");
+            return null;
+          }
+        } catch (error) {
+          console.error("Error getting location:", error);
+          setCurrentLocation(user?.location?.address || "Unknown Location");
+          return null;
+        } finally {
+          setLocationLoading(false);
+        }
+      }, 5000),
+    [user]
+  );
+
+  const fetchPopularAccommodations = useCallback(async () => {
+    try {
+      const data = await accommodationsAPI.getPopularAccommodations(4);
+      setPopularAccommodations((prev) =>
+        JSON.stringify(prev) !== JSON.stringify(data) ? data : prev
+      );
+      cachedData.popular = data;
+    } catch (error) {
+      console.error("Error fetching popular accommodations:", error);
+      setError("Failed to load popular accommodations");
+    }
+  }, []);
+
+  const fetchRecommendedAccommodations = useCallback(async () => {
+    try {
+      const data = await accommodationsAPI.getRecommendedAccommodations(4);
+      setRecommendedAccommodations((prev) =>
+        JSON.stringify(prev) !== JSON.stringify(data) ? data : prev
+      );
+      cachedData.recommended = data;
+    } catch (error) {
+      console.error("Error fetching recommended accommodations:", error);
+      setError("Failed to load recommended accommodations");
+    }
+  }, []);
+
+  const fetchNearbyAccommodations = useCallback(
+    async (latitude: number, longitude: number) => {
+      try {
+        const data = await accommodationsAPI.getNearbyAccommodations({
+          latitude: user?.location?.coordinates[0],
+          longitude: user?.location?.coordinates[1],
+          distance: 5000,
+          limit: 4,
+        });
+        setNearbyAccommodations((prev) =>
+          JSON.stringify(prev) !== JSON.stringify(data.results)
+            ? data.results
+            : prev
+        );
+        cachedData.nearby = data.results;
+      } catch (error) {
+        console.error("Error fetching nearby accommodations:", error);
+        setError("Failed to load nearby accommodations");
+      }
+    },
+    []
+  );
+
+  const fetchHotels = useCallback(async () => {
+    try {
+      const data = await accommodationsAPI.getAccommodationsByType("hotels", {
+        limit: 4,
+      });
+      setHotels((prev) =>
+        JSON.stringify(prev) !== JSON.stringify(data.results)
+          ? data.results
+          : prev
+      );
+      cachedData.hotels = data.results;
+    } catch (error) {
+      console.error("Error fetching hotels:", error);
+      setError("Failed to load hotels");
+    }
+  }, []);
+
+  const applyFilters = useCallback(async () => {
+    if (selectedFilters.includes("all")) {
+      await Promise.all([
+        cachedData.popular.length
+          ? setPopularAccommodations(cachedData.popular)
+          : fetchPopularAccommodations(),
+        cachedData.recommended.length
+          ? setRecommendedAccommodations(cachedData.recommended)
+          : fetchRecommendedAccommodations(),
+        cachedData.hotels.length ? setHotels(cachedData.hotels) : fetchHotels(),
+        fetchLocation().then((coords) => {
+          if (
+            coords &&
+            (!cachedData.nearby.length ||
+              cachedData.lastFetch < Date.now() - 300000)
+          ) {
+            fetchNearbyAccommodations(coords.latitude, coords.longitude);
+          } else if (cachedData.nearby.length) {
+            setNearbyAccommodations(cachedData.nearby);
+          }
+        }),
+      ]);
+      cachedData.lastFetch = Date.now();
+      return;
+    }
+
+    try {
+      const filterPromises = selectedFilters.map(async (type) => {
+        const data = await accommodationsAPI.getAccommodations({
+          accommodation_type: type,
+          limit: 4,
+        });
+        return { type, results: data.results };
+      });
+
+      const filteredResults = await Promise.all(filterPromises);
+
+      filteredResults.forEach(({ type, results }) => {
+        if (type === "hotel")
+          setHotels((prev) =>
+            JSON.stringify(prev) !== JSON.stringify(results) ? results : prev
+          );
+        else if (type === "apartment")
+          setPopularAccommodations((prev) =>
+            JSON.stringify(prev) !== JSON.stringify(results) ? results : prev
+          );
+        else if (type === "hostel")
+          setRecommendedAccommodations((prev) =>
+            JSON.stringify(prev) !== JSON.stringify(results) ? results : prev
+          );
+        else if (type === "lodge")
+          setNearbyAccommodations((prev) =>
+            JSON.stringify(prev) !== JSON.stringify(results) ? results : prev
+          );
+      });
+    } catch (error) {
+      console.error("Error applying filters:", error);
+      setError("Failed to apply filters");
+    }
+  }, [
+    selectedFilters,
+    fetchPopularAccommodations,
+    fetchRecommendedAccommodations,
+    fetchHotels,
+    fetchLocation,
+    fetchNearbyAccommodations,
+  ]);
+
+  const handleFavoriteToggle = useCallback(
+    (id: string, isFavorite: boolean) => {
+      const updateSection = (prev: Accommodation[]) =>
+        prev.map((item) =>
+          item._id === id ? { ...item, is_favorite: isFavorite } : item
+        );
+      setPopularAccommodations(updateSection);
+      setRecommendedAccommodations(updateSection);
+      setNearbyAccommodations(updateSection);
+      setHotels(updateSection);
+      // Update cache
+      cachedData.popular = updateSection(cachedData.popular);
+      cachedData.recommended = updateSection(cachedData.recommended);
+      cachedData.nearby = updateSection(cachedData.nearby);
+      cachedData.hotels = updateSection(cachedData.hotels);
+    },
+    []
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      console.log("useFocusEffect triggered at", new Date().toISOString());
+      setLoading(true);
+      setError(null);
+      const loadData = async () => {
+        try {
+          // Use cached data if available and not stale (5 minutes)
+          const isCacheValid = cachedData.lastFetch > Date.now() - 300000;
+          if (isCacheValid && cachedData.popular.length) {
+            setPopularAccommodations(cachedData.popular);
+            setRecommendedAccommodations(cachedData.recommended);
+            setHotels(cachedData.hotels);
+            setNearbyAccommodations(cachedData.nearby);
+          } else {
+            const locationCoords = await fetchLocation();
+            await Promise.all([
+              fetchPopularAccommodations(),
+              fetchRecommendedAccommodations(),
+              fetchHotels(),
+              locationCoords
+                ? fetchNearbyAccommodations(
+                    locationCoords.latitude,
+                    locationCoords.longitude
+                  )
+                : Promise.resolve(),
+            ]);
+            cachedData.lastFetch = Date.now();
+          }
+          await fetchFavorites();
+          setLoading(false);
+        } catch (error) {
+          console.error("Error loading data:", error);
+          setError("Failed to load data");
+          setLoading(false);
+        }
+      };
+
+      loadData();
+    }, [
+      fetchLocation,
+      fetchPopularAccommodations,
+      fetchRecommendedAccommodations,
+      fetchHotels,
+      fetchFavorites,
+      fetchNearbyAccommodations,
+    ])
+  );
+
+  const handleFilterToggle = useCallback(
+    (filterId: string) => {
+      let newFilters: string[];
+      if (filterId === "all") {
+        newFilters = ["all"];
+      } else {
+        newFilters = selectedFilters.filter((f) => f !== "all");
+        if (newFilters.includes(filterId)) {
+          newFilters = newFilters.filter((f) => f !== filterId);
+          if (newFilters.length === 0) {
+            newFilters = ["all"];
+          }
+        } else {
+          newFilters.push(filterId);
+        }
+      }
+      setSelectedFilters(newFilters);
+      applyFilters();
+    },
+    [selectedFilters, applyFilters]
+  );
+
+  const handleSearchSubmit = useCallback(async () => {
+    if (!searchQuery.trim()) return;
+    try {
+      const results = await accommodationsAPI.searchAccommodations({
+        query: searchQuery,
+        limit: 10,
+      });
+      router.push({
+        pathname: "/search",
+        params: {
+          query: searchQuery,
+          results: JSON.stringify(results.results),
+        },
+      });
+    } catch (error) {
+      console.error("Error searching accommodations:", error);
+      setError("Failed to search accommodations");
+    }
+  }, [searchQuery]);
+
+  const handleProfilePress = useCallback(() => {
+    router.push("/profile");
+  }, []);
+
+  const handleLocationPress = useCallback(() => {
+    router.push("/(tabs)/profile");
+  }, []);
+
+  const handleSearchPress = useCallback(() => {
+    if (searchQuery.trim()) {
+      handleSearchSubmit();
+    } else {
+      router.push("/search");
+    }
+  }, [searchQuery, handleSearchSubmit]);
+
+  const userProfile = useMemo(
+    () => ({
+      name: user ? `${user.first_name} ${user.last_name}` : "Guest",
+      avatar:
+        user?.profile_image_url ||
+        "https://randomuser.me/api/portraits/men/32.jpg",
+      hasNotifications: false,
+    }),
+    [user]
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity
+          style={styles.retryButton}
+          onPress={() => {
+            setLoading(true);
+            setError(null);
+            fetchLocation().then((coords) => {
+              Promise.all([
+                fetchPopularAccommodations(),
+                fetchRecommendedAccommodations(),
+                fetchHotels(),
+                fetchFavorites(),
+                coords
+                  ? fetchNearbyAccommodations(coords.latitude, coords.longitude)
+                  : Promise.resolve(),
+              ]).then(() => setLoading(false));
+            });
+          }}
+        >
+          <Text style={styles.retryButtonText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
-      {/* Header with animated opacity */}
       <Animated.View style={[styles.headerContainer, { opacity: 1 }]}>
         <View style={styles.headerContent}>
           <View style={styles.topRow}>
-            {/* <Animated.View
-              style={[
-                styles.locationContainer,
-                {
-                  transform: [{ translateY: locationTextPosition }],
-                  opacity: locationTextOpacity,
-                },
-              ]}
-            >
-              <Text style={styles.locationLabel}>LOCATION</Text>
-            </Animated.View> */}
-
             <TouchableOpacity
               style={styles.locationContainer}
-              onPress={onLocationPress}
+              onPress={handleLocationPress}
+              disabled={locationLoading}
             >
               <MaterialIcons
                 name="location-on"
@@ -358,7 +609,7 @@ export default function AppHeader({
                 color={theme.colors.primary}
               />
               <Text style={styles.locationText} numberOfLines={1}>
-                {currentLocation}
+                {user?.location?.address}
               </Text>
               <MaterialIcons
                 name="keyboard-arrow-down"
@@ -369,7 +620,7 @@ export default function AppHeader({
 
             <TouchableOpacity
               style={styles.profileContainer}
-              onPress={onProfilePress}
+              onPress={handleProfilePress}
             >
               {userProfile.hasNotifications && (
                 <View style={styles.badgeContainer}>
@@ -383,11 +634,12 @@ export default function AppHeader({
           <View style={styles.searchContainer}>
             <Searchbar
               placeholder="Search accommodations"
-              onChangeText={onChangeSearch}
+              onChangeText={setSearchQuery}
               value={searchQuery}
               style={styles.searchBar}
               iconColor={theme.colors.primary}
-              onPressIn={onSearchPress}
+              onSubmitEditing={handleSearchSubmit}
+              onPressIn={handleSearchPress}
               elevation={0}
             />
           </View>
@@ -419,7 +671,6 @@ export default function AppHeader({
         </View>
       </Animated.View>
 
-      {/* Transparent header that appears on scroll */}
       <Animated.View
         style={[
           styles.transparentHeader,
@@ -431,7 +682,7 @@ export default function AppHeader({
       >
         <TouchableOpacity
           style={styles.locationContainer}
-          onPress={onLocationPress}
+          onPress={handleLocationPress}
         >
           <MaterialIcons
             name="location-on"
@@ -439,7 +690,7 @@ export default function AppHeader({
             color={theme.colors.primary}
           />
           <Text style={styles.locationText} numberOfLines={1}>
-            {currentLocation}
+            {user?.location?.address}
           </Text>
           <MaterialIcons
             name="keyboard-arrow-down"
@@ -450,7 +701,7 @@ export default function AppHeader({
 
         <TouchableOpacity
           style={styles.profileContainer}
-          onPress={onProfilePress}
+          onPress={handleProfilePress}
         >
           {userProfile.hasNotifications && (
             <View style={styles.badgeContainer}>
@@ -461,7 +712,6 @@ export default function AppHeader({
         </TouchableOpacity>
       </Animated.View>
 
-      {/* Sample scrollable content to demonstrate header behavior */}
       <Animated.ScrollView
         scrollEventThrottle={16}
         onScroll={Animated.event(
@@ -471,17 +721,7 @@ export default function AppHeader({
       >
         <View style={styles.scrollContent}>
           <View>
-            <Text
-              style={{
-                fontSize: 20,
-                fontFamily: "InterSemiBold",
-                paddingLeft: 25,
-                marginBottom: 15,
-                color: theme.colors.onSurface,
-              }}
-            >
-              Popular
-            </Text>
+            <Text style={styles.sectionTitle}>Popular</Text>
             <Animated.ScrollView
               ref={scrollViewRef}
               horizontal
@@ -493,21 +733,109 @@ export default function AppHeader({
               onScroll={handleScroll}
               onMomentumScrollEnd={handleScrollEnd}
             >
-              {/* <View
-              // key={item.id}
-              style={[
-                styles.cardContainer,
-                {
-                  marginRight:
-                    index === items.length - 1 ? SPACING * 2 : SPACING,
-                },
-              ]}
-            > */}
-              <AccommodationCard item={item} />
-              <AccommodationCard item={item} />
-              <AccommodationCard item={item} />
-              <AccommodationCard item={item} />
-              {/* </View> */}
+              {popularAccommodations.length > 0 ? (
+                popularAccommodations.map((item) => (
+                  <View key={item._id} style={styles.cardContainer}>
+                    <AccommodationCard
+                      item={item}
+                      isFavorite={isFavorited(item._id)}
+                      onFavoriteToggle={handleFavoriteToggle}
+                    />
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.sectionTitle}>
+                  No popular accommodations found
+                </Text>
+              )}
+            </Animated.ScrollView>
+          </View>
+
+          <View style={{ marginTop: 20 }}>
+            <Text style={styles.sectionTitle}>Recommended</Text>
+            <Animated.ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.scrollViewContent}
+              snapToInterval={CARD_WIDTH + SPACING}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              onScroll={handleScroll}
+              onMomentumScrollEnd={handleScrollEnd}
+            >
+              {recommendedAccommodations.length > 0 ? (
+                recommendedAccommodations.map((item) => (
+                  <View key={item._id} style={styles.cardContainer}>
+                    <AccommodationCard
+                      item={item}
+                      isFavorite={isFavorited(item._id)}
+                      onFavoriteToggle={handleFavoriteToggle}
+                    />
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.sectionTitle}>
+                  No recommended accommodations found
+                </Text>
+              )}
+            </Animated.ScrollView>
+          </View>
+
+          <View style={{ marginTop: 20 }}>
+            <Text style={styles.sectionTitle}>Near me</Text>
+            <Animated.ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.scrollViewContent}
+              snapToInterval={CARD_WIDTH + SPACING}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              onScroll={handleScroll}
+              onMomentumScrollEnd={handleScrollEnd}
+            >
+              {nearbyAccommodations.length > 0 ? (
+                nearbyAccommodations.map((item) => (
+                  <View key={item._id} style={styles.cardContainer}>
+                    <AccommodationCard
+                      item={item}
+                      isFavorite={isFavorited(item._id)}
+                      onFavoriteToggle={handleFavoriteToggle}
+                    />
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.sectionTitle}>
+                  No nearby accommodations found
+                </Text>
+              )}
+            </Animated.ScrollView>
+          </View>
+
+          <View style={{ marginTop: 20 }}>
+            <Text style={styles.sectionTitle}>Hotels</Text>
+            <Animated.ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.scrollViewContent}
+              snapToInterval={CARD_WIDTH + SPACING}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              onScroll={handleScroll}
+              onMomentumScrollEnd={handleScrollEnd}
+            >
+              {hotels.length > 0 ? (
+                hotels.map((item) => (
+                  <View key={item._id} style={styles.cardContainer}>
+                    <AccommodationCard
+                      item={item}
+                      isFavorite={isFavorited(item._id)}
+                      onFavoriteToggle={handleFavoriteToggle}
+                    />
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.sectionTitle}>No hotels found</Text>
+              )}
             </Animated.ScrollView>
           </View>
         </View>

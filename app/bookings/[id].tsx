@@ -1,7 +1,10 @@
+import { useAuth } from "@/context/AuthContext";
+import { api, bookingsAPI } from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import React, { useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Modal,
@@ -16,149 +19,126 @@ import {
 } from "react-native";
 
 const BookingDetailsScreen = () => {
-  // Sample booking data - in a real app, this would come from route.params or API
-  const bookingData = {
-    accommodation_id: "67e4a8067e9acffbabf51f3a",
-    room_id: "0",
-    check_in_date: "2025-05-14T16:13:19.843000",
-    check_out_date: "2025-05-20T16:13:19.843000",
-    guests: 2,
-    special_requests: "Need early check-in and a baby crib",
-    _id: "6824ce515f70fd179f0a947b",
-    user_id: "6824cbc75f70fd179f0a947a",
-    total_price: 599,
-    booking_status: "confirmed",
-    payment_status: "paid",
-    created_at: "2025-05-14T17:09:37.100000",
-    accommodation_details: {
-      _id: "67e4a8067e9acffbabf51f3a",
-      name: "Grand Luxury Hotel",
-      description: "5-star hotel with premium amenities and excellent service",
-      accommodation_type: "hotel",
-      location: {
-        type: "Point",
-        coordinates: [10, 10],
-        address: "123 Luxury Avenue",
-      },
-      address: "123 Luxury Avenue",
-      city: "New York",
-      state: "NY",
-      country: "USA",
-      amenities: ["wifi", "pool", "gym", "spa", "restaurant"],
-      rooms: [
-        {
-          name: "Deluxe King Room",
-          description: "Spacious room with king bed and city view",
-          price_per_night: 299,
-          capacity: 2,
-          amenities: ["wifi", "tv", "minibar"],
-          images: [],
-          is_available: true,
-        },
-      ],
-      images: [
-        "https://res.cloudinary.com/dejeplzpv/image/upload/v1747242531/accommodation_images/kwutdzug4arzlteqf9ob.png",
-        "https://res.cloudinary.com/dejeplzpv/image/upload/v1747242532/accommodation_images/wqtbopx5tel3a7ihcnor.png",
-      ],
-      rating: 4.8,
-      contact_email: "info@grandluxury.com",
-      contact_phone: "+1 (555) 123-4567",
-    },
-    user_details: {
-      email: "user@example.com",
-      first_name: "John",
-      last_name: "Doe",
-      phone_number: "+1 (555) 987-6543",
-    },
-  };
-
-  const [booking, setBooking] = useState(bookingData);
-  const [isLoading, setIsLoading] = useState(false);
+  const { user } = useAuth();
+  const { id } = useLocalSearchParams();
+  const [booking, setBooking] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
-    special_requests: bookingData.special_requests,
+    special_requests: "",
   });
 
-  // Format date to be more readable
-  const formatDate = (dateString) => {
+  useEffect(() => {
+    if (!user) {
+      setError("Please log in to view booking details");
+      setIsLoading(false);
+      return;
+    }
+
+    const fetchBooking = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const response = await bookingsAPI.getBooking(id);
+        setBooking(response);
+        setEditForm({ special_requests: response.special_requests || "" });
+      } catch (err) {
+        console.error("Error fetching booking:", err);
+        setError("Failed to load booking details. Please try again.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (id) {
+      fetchBooking();
+    }
+  }, [id, user]);
+
+  const formatDate = (dateString: any) => {
     const options = { year: "numeric", month: "long", day: "numeric" };
     return new Date(dateString).toLocaleDateString(undefined, options);
   };
 
-  // Calculate number of nights
   const calculateNights = () => {
+    if (!booking) return 0;
     const checkIn = new Date(booking.check_in_date);
     const checkOut = new Date(booking.check_out_date);
     const diffTime = Math.abs(checkOut - checkIn);
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
-  // Handle cancellation
   const handleCancelBooking = async () => {
     setIsLoading(true);
     try {
-      // In a real app, you would call:
-      // await fetch(`/api/bookings/${booking._id}`, { method: 'DELETE' });
-
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Update local state
+      await bookingsAPI.cancelBooking(booking._id);
       setBooking((prev) => ({
         ...prev,
         booking_status: "cancelled",
         payment_status: "refunded",
       }));
-
       setShowCancelModal(false);
       Alert.alert("Success", "Your booking has been cancelled successfully");
-    } catch (error) {
+    } catch (err) {
+      console.error("Error cancelling booking:", err);
       Alert.alert("Error", "Failed to cancel booking. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Handle booking modification
   const handleUpdateBooking = async () => {
     setIsLoading(true);
     try {
-      // In a real app, you would call:
-      // await fetch(`/api/bookings/${booking._id}`, {
-      //   method: 'PATCH',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify({
-      //     special_requests: editForm.special_requests,
-      //     booking_status: booking.booking_status,
-      //     payment_status: booking.payment_status
-      //   })
-      // });
-
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Update local state
+      // Custom PATCH request since bookingsAPI doesn't have updateBooking
+      await api.patch(`/api/bookings/${booking._id}`, {
+        special_requests: editForm.special_requests,
+      });
       setBooking((prev) => ({
         ...prev,
         special_requests: editForm.special_requests,
       }));
-
       setShowEditModal(false);
       Alert.alert("Success", "Your booking has been updated successfully");
-    } catch (error) {
+    } catch (err) {
+      console.error("Error updating booking:", err);
       Alert.alert("Error", "Failed to update booking. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#3498db" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !booking) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error || "Booking not found"}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.retryButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView>
-        {/* Header with back button */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={24} color="#333" />
@@ -167,15 +147,17 @@ const BookingDetailsScreen = () => {
           <View style={{ width: 24 }} />
         </View>
 
-        {/* Property images */}
         <View style={styles.imageContainer}>
           <Image
-            source={{ uri: booking.accommodation_details.images[0] }}
+            source={{
+              uri:
+                booking.accommodation_details.images[0] ||
+                "https://via.placeholder.com/800/500",
+            }}
             style={styles.mainImage}
           />
         </View>
 
-        {/* Booking status badge */}
         <View style={styles.statusContainer}>
           <View
             style={[
@@ -203,7 +185,6 @@ const BookingDetailsScreen = () => {
           </View>
         </View>
 
-        {/* Property details */}
         <View style={styles.section}>
           <Text style={styles.propertyName}>
             {booking.accommodation_details.name}
@@ -218,18 +199,17 @@ const BookingDetailsScreen = () => {
           <View style={styles.ratingContainer}>
             <Ionicons name="star" size={16} color="#FFC107" />
             <Text style={styles.ratingText}>
-              {booking.accommodation_details.rating}
+              {booking.accommodation_details.rating || "N/A"}
             </Text>
           </View>
         </View>
 
-        {/* Booking summary */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Booking Summary</Text>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Room Type:</Text>
             <Text style={styles.summaryValue}>
-              {booking.accommodation_details.rooms[0].name}
+              {booking.accommodation_details.rooms[0]?.name || "Unknown"}
             </Text>
           </View>
           <View style={styles.summaryRow}>
@@ -264,17 +244,16 @@ const BookingDetailsScreen = () => {
           )}
         </View>
 
-        {/* Price breakdown */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Price Details</Text>
           <View style={styles.priceRow}>
             <Text style={styles.priceLabel}>
-              ${booking.accommodation_details.rooms[0].price_per_night} x{" "}
+              ${booking.accommodation_details.rooms[0]?.price_per_night || 0} x{" "}
               {calculateNights()} nights
             </Text>
             <Text style={styles.priceValue}>
               $
-              {booking.accommodation_details.rooms[0].price_per_night *
+              {(booking.accommodation_details.rooms[0]?.price_per_night || 0) *
                 calculateNights()}
             </Text>
           </View>
@@ -288,7 +267,6 @@ const BookingDetailsScreen = () => {
           </View>
         </View>
 
-        {/* Contact information */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Contact Information</Text>
           <View style={styles.contactRow}>
@@ -309,7 +287,6 @@ const BookingDetailsScreen = () => {
           </View>
         </View>
 
-        {/* Amenities */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Amenities</Text>
           <View style={styles.amenitiesContainer}>
@@ -341,7 +318,6 @@ const BookingDetailsScreen = () => {
         </View>
       </ScrollView>
 
-      {/* Action buttons */}
       {booking.booking_status !== "cancelled" && (
         <View style={styles.actionButtons}>
           <TouchableOpacity
@@ -361,7 +337,6 @@ const BookingDetailsScreen = () => {
         </View>
       )}
 
-      {/* Cancel confirmation modal */}
       <Modal visible={showCancelModal} transparent={true} animationType="slide">
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
@@ -397,7 +372,6 @@ const BookingDetailsScreen = () => {
         </View>
       </Modal>
 
-      {/* Edit booking modal */}
       <Modal visible={showEditModal} transparent={true} animationType="slide">
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
@@ -454,7 +428,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#e0e0e0",
-    paddingTop: Platform.OS == "android" ? 30 : 0,
+    paddingTop: Platform.OS === "android" ? 30 : 0,
   },
   headerTitle: {
     fontSize: 20,
@@ -487,14 +461,8 @@ const styles = StyleSheet.create({
   statusCancelled: {
     backgroundColor: "#ffebee",
   },
-  statusCancelledText: {
-    color: "#c62828",
-  },
   statusPending: {
     backgroundColor: "#fff8e1",
-  },
-  statusPendingText: {
-    color: "#f9a825",
   },
   statusPaid: {
     backgroundColor: "#e1f5e8",
@@ -641,12 +609,6 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#3498db",
   },
-  cancelButtonText: {
-    color: "#ff4444",
-  },
-  editButtonText: {
-    color: "#fff",
-  },
   modalContainer: {
     flex: 1,
     justifyContent: "center",
@@ -708,6 +670,34 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     minHeight: 100,
     textAlignVertical: "top",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  errorText: {
+    fontSize: 16,
+    color: "#c62828",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  retryButton: {
+    backgroundColor: "#3498db",
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  retryButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
   },
 });
 

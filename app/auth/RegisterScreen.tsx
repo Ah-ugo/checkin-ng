@@ -1,3 +1,4 @@
+import { authAPI, RegisterUserData } from "@/services/api";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as Location from "expo-location";
 import { useNavigation, useRouter } from "expo-router";
@@ -209,38 +210,89 @@ export default function RegisterScreen() {
   };
 
   // Handle registration
-  const handleRegister = () => {
+  //   const handleRegister = () => {
+  //     if (validateForm()) {
+  //       setLoading(true);
+
+  //       // Prepare payload for API
+  //       const payload = {
+  //         email,
+  //         first_name: firstName,
+  //         last_name: lastName,
+  //         phone_number: phoneNumber,
+  //         location: {
+  //           type: "Point",
+  //           coordinates: location.coordinates,
+  //           address: location.address || address,
+  //         },
+  //         is_admin: false,
+  //         is_active: true,
+  //         password,
+  //       };
+
+  //       console.log("Registration payload:", payload);
+
+  //       // Here you would make the API call
+  //       // For this example, we'll just simulate a delay
+  //       setTimeout(() => {
+  //         setLoading(false);
+  //         Alert.alert(
+  //           "Registration Successful",
+  //           "Your account has been created successfully!",
+  //           [{ text: "OK", onPress: () => navigation.goBack() }]
+  //         );
+  //       }, 2000);
+  //     }
+  //   };
+
+  const handleRegister = async () => {
     if (validateForm()) {
       setLoading(true);
 
-      // Prepare payload for API
-      const payload = {
-        email,
-        first_name: firstName,
-        last_name: lastName,
-        phone_number: phoneNumber,
-        location: {
-          type: "Point",
-          coordinates: location.coordinates,
-          address: location.address || address,
-        },
-        is_admin: false,
-        is_active: true,
-        password,
-      };
+      try {
+        // Prepare payload for API
+        const payload: RegisterUserData = {
+          email,
+          first_name: firstName,
+          last_name: lastName,
+          phone_number: phoneNumber,
+          location: {
+            type: "Point",
+            coordinates: location.coordinates as [number, number],
+            address: location.address || address,
+          },
+          password,
+        };
 
-      console.log("Registration payload:", payload);
+        // Make the API call
+        const user = await authAPI.register(payload);
 
-      // Here you would make the API call
-      // For this example, we'll just simulate a delay
-      setTimeout(() => {
-        setLoading(false);
+        // If successful, show success message and navigate back
         Alert.alert(
           "Registration Successful",
           "Your account has been created successfully!",
           [{ text: "OK", onPress: () => navigation.goBack() }]
         );
-      }, 2000);
+      } catch (error: any) {
+        // Handle API errors
+        let errorMessage = "Registration failed. Please try again.";
+
+        if (error.response) {
+          // Server responded with an error status (4xx, 5xx)
+          if (error.response.data && error.response.data.detail) {
+            errorMessage = error.response.data.detail;
+          } else if (error.response.status === 409) {
+            errorMessage = "An account with this email already exists.";
+          }
+        } else if (error.request) {
+          // Request was made but no response received
+          errorMessage = "Network error. Please check your connection.";
+        }
+
+        Alert.alert("Registration Error", errorMessage);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 

@@ -1,6 +1,9 @@
+import { useAuth } from "@/context/AuthContext";
+import { userAPI } from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
+import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -17,41 +20,20 @@ import {
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 
-const ProfileScreen = ({ navigation }) => {
-  // User data state
-  const [userData, setUserData] = useState({
-    email: "user@example.com",
-    first_name: "John",
-    last_name: "Doe",
-    phone_number: "+1 (555) 123-4567",
-    location: {
-      type: "Point",
-      coordinates: [0, 0],
-      address: "123 Main St, New York, NY",
-    },
-    is_admin: false,
-    is_active: true,
-    _id: "6824cbc75f70fd179f0a947a",
-    profile_image_url: "https://randomuser.me/api/portraits/men/1.jpg",
-    created_at: "2025-05-14T16:58:47.755000",
-  });
-
-  // UI states
+const ProfileScreen = () => {
+  const { user, refreshUser, logout } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-
-  // Form states
   const [editForm, setEditForm] = useState({
     first_name: "",
     last_name: "",
     phone_number: "",
     location: { address: "" },
   });
-
-  // Location states
   const [mapRegion, setMapRegion] = useState({
     latitude: 5,
     longitude: 7,
@@ -60,39 +42,31 @@ const ProfileScreen = ({ navigation }) => {
   });
   const [selectedLocation, setSelectedLocation] = useState(null);
 
-  // Fetch user data
-  const fetchUserData = async () => {
-    try {
-      setIsLoading(true);
-      // TODO: Replace with actual API call
-      // const response = await fetch('/api/auth/me', {
-      //   headers: {
-      //     'Authorization': `Bearer ${userToken}`
-      //   }
-      // });
-      // const data = await response.json();
-      // setUserData(data);
-
-      // Initialize edit form with current data
-      setEditForm({
-        first_name: userData.first_name,
-        last_name: userData.last_name,
-        phone_number: userData.phone_number,
-        location: { address: userData.location.address },
-      });
-    } catch (error) {
-      Alert.alert("Error", "Failed to load profile data");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchUserData();
-  }, []);
+    if (user) {
+      setEditForm({
+        first_name: user.first_name || "",
+        last_name: user.last_name || "",
+        phone_number: user.phone_number || "",
+        location: { address: user.location?.address || "" },
+      });
+      if (user.location?.coordinates?.length === 2) {
+        setMapRegion({
+          latitude: user.location.coordinates[1],
+          longitude: user.location.coordinates[0],
+          latitudeDelta: 0.0922,
+          longitudeDelta: 0.0421,
+        });
+      }
+    }
+  }, [user]);
 
-  // Handle profile image update
   const handleUpdateProfileImage = async () => {
+    if (!user) {
+      setError("Please log in to update your profile image");
+      return;
+    }
+
     try {
       const { status } =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -110,57 +84,48 @@ const ProfileScreen = ({ navigation }) => {
 
       if (!result.canceled) {
         setIsLoading(true);
-        // TODO: Implement actual image upload
-        // const formData = new FormData();
-        // formData.append('file', {
-        //   uri: result.uri,
-        //   type: 'image/jpeg',
-        //   name: 'profile.jpg'
-        // });
-
-        // const response = await fetch('/api/users/profile/image', {
-        //   method: 'POST',
-        //   headers: {
-        //     'Content-Type': 'multipart/form-data',
-        //     'Authorization': `Bearer ${userToken}`
-        //   },
-        //   body: formData
-        // });
-
-        // Update local state
-        setUserData((prev) => ({
-          ...prev,
-          profile_image_url: result.assets[0].uri,
-        }));
+        const formData = new FormData();
+        formData.append("file", {
+          uri: result.assets[0].uri,
+          type: "image/jpeg",
+          name: "profile.jpg",
+        });
+        await userAPI.uploadProfileImage(formData);
+        await refreshUser();
         Alert.alert("Success", "Profile picture updated");
       }
-    } catch (error) {
-      Alert.alert("Error", "Failed to update image");
+    } catch (err) {
+      console.error("Error updating profile image:", err);
+      Alert.alert("Error", "Failed to update profile image");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Get current location
   const getCurrentLocation = async () => {
     try {
       setIsLoading(true);
-      let { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         Alert.alert("Permission denied", "Allow location access");
         return;
       }
 
-      let location = await Location.getCurrentPositionAsync({});
+      const location = await Location.getCurrentPositionAsync({});
       const { latitude, longitude } = location.coords;
-
-      // Get address from coordinates
-      let geocode = await Location.reverseGeocodeAsync({ latitude, longitude });
-      let address = geocode[0]?.name || `${latitude}, ${longitude}`;
+      const geocode = await Location.reverseGeocodeAsync({
+        latitude,
+        longitude,
+      });
+      const address = geocode[0]
+        ? `${geocode[0].street || ""}, ${geocode[0].city || ""}, ${
+            geocode[0].country || ""
+          }`
+        : `${latitude}, ${longitude}`;
 
       setSelectedLocation({
         coordinates: [longitude, latitude],
-        address,
+        address: address.trim(),
       });
 
       setMapRegion({
@@ -172,124 +137,130 @@ const ProfileScreen = ({ navigation }) => {
 
       setShowLocationModal(false);
       setShowMapModal(true);
-    } catch (error) {
+    } catch (err) {
+      console.error("Error getting location:", err);
       Alert.alert("Error", "Failed to get location");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Handle map press to select location
-  const handleMapPress = (e) => {
+  const handleMapPress = async (e) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
-    setSelectedLocation({
-      coordinates: [longitude, latitude],
-      address: `Selected Location (${latitude.toFixed(4)}, ${longitude.toFixed(
-        4
-      )})`,
-    });
+    try {
+      const geocode = await Location.reverseGeocodeAsync({
+        latitude,
+        longitude,
+      });
+      const address = geocode[0]
+        ? `${geocode[0].street || ""}, ${geocode[0].city || ""}, ${
+            geocode[0].country || ""
+          }`
+        : `Selected Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
+
+      setSelectedLocation({
+        coordinates: [longitude, latitude],
+        address: address.trim(),
+      });
+    } catch (err) {
+      console.error("Error reverse geocoding:", err);
+      setSelectedLocation({
+        coordinates: [longitude, latitude],
+        address: `Selected Location (${latitude.toFixed(
+          4
+        )}, ${longitude.toFixed(4)})`,
+      });
+    }
   };
 
-  // Save location to profile
   const saveLocation = async () => {
-    if (!selectedLocation) return;
+    if (!user) {
+      setError("Please log in to update your location");
+      return;
+    }
+
+    if (!selectedLocation) {
+      Alert.alert("Error", "Please select a location");
+      return;
+    }
 
     try {
       setIsUpdating(true);
-      // TODO: Implement actual API call
-      // const formData = new URLSearchParams();
-      // formData.append('latitude', selectedLocation.coordinates[1]);
-      // formData.append('longitude', selectedLocation.coordinates[0]);
-      // formData.append('address', selectedLocation.address);
-
-      // const response = await fetch('/api/users/location', {
-      //   method: 'POST',
-      //   headers: {
-      //     'Accept': 'application/json',
-      //     'Content-Type': 'application/x-www-form-urlencoded',
-      //     'Authorization': `Bearer ${userToken}`
-      //   },
-      //   body: formData
-      // });
-
-      // Update local state
-      setUserData((prev) => ({
-        ...prev,
-        location: {
-          type: "Point",
-          coordinates: selectedLocation.coordinates,
-          address: selectedLocation.address,
-        },
-      }));
-
-      setEditForm((prev) => ({
-        ...prev,
-        location: { address: selectedLocation.address },
-      }));
-
+      await userAPI.updateLocation({
+        latitude: selectedLocation.coordinates[1],
+        longitude: selectedLocation.coordinates[0],
+        address: selectedLocation.address,
+      });
+      await refreshUser();
       setShowMapModal(false);
       Alert.alert("Success", "Location updated");
-    } catch (error) {
+    } catch (err) {
+      console.error("Error updating location:", err);
       Alert.alert("Error", "Failed to update location");
     } finally {
       setIsUpdating(false);
     }
   };
 
-  // Update profile information
   const handleUpdateProfile = async () => {
+    if (!user) {
+      setError("Please log in to update your profile");
+      return;
+    }
+
     try {
       setIsUpdating(true);
-      // TODO: Implement actual API call
-      // const response = await fetch('/api/users/profile', {
-      //   method: 'PUT',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //     'Authorization': `Bearer ${userToken}`
-      //   },
-      //   body: JSON.stringify({
-      //     first_name: editForm.first_name,
-      //     last_name: editForm.last_name,
-      //     phone_number: editForm.phone_number,
-      //     location: {
-      //       type: "Point",
-      //       coordinates: userData.location.coordinates,
-      //       address: editForm.location.address
-      //     }
-      //   })
-      // });
-
-      // Update local state
-      setUserData((prev) => ({
-        ...prev,
+      const updateData = {
         first_name: editForm.first_name,
         last_name: editForm.last_name,
         phone_number: editForm.phone_number,
         location: {
-          ...prev.location,
+          type: "Point",
+          coordinates: user.location?.coordinates || [0, 0],
           address: editForm.location.address,
         },
-      }));
-
+      };
+      await userAPI.updateProfile(updateData);
+      await refreshUser();
       setShowEditModal(false);
       Alert.alert("Success", "Profile updated");
-    } catch (error) {
+    } catch (err) {
+      console.error("Error updating profile:", err);
       Alert.alert("Error", "Failed to update profile");
     } finally {
       setIsUpdating(false);
     }
   };
 
-  // Format date
-  const formatDate = (dateString) => {
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.replace("/auth/LoginScreen");
+    } catch (err) {
+      console.error("Error logging out:", err);
+      Alert.alert("Error", "Failed to log out");
+    }
+  };
+
+  const formatDate = (dateString: any) => {
     const options = { year: "numeric", month: "long", day: "numeric" };
     return new Date(dateString).toLocaleDateString(undefined, options);
   };
 
-  if (isLoading) {
+  if (!user) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3498db" />
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>
+            {error || "Please log in to view your profile"}
+          </Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => router.push("/auth/LoginScreen")}
+          >
+            <Text style={styles.retryButtonText}>Go to Login</Text>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
     );
   }
@@ -297,22 +268,22 @@ const ProfileScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
-        {/* Profile Header */}
         <View style={styles.profileHeader}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>My Profile</Text>
-          <View style={{ width: 24 }} />
+          <TouchableOpacity onPress={handleLogout}>
+            <Ionicons name="log-out" size={24} color="#333" />
+          </TouchableOpacity>
         </View>
 
-        {/* Profile Picture */}
         <View style={styles.profilePictureContainer}>
           <TouchableOpacity onPress={handleUpdateProfileImage}>
             <View style={styles.profileImageContainer}>
-              {userData.profile_image_url ? (
+              {user.profile_image_url ? (
                 <Image
-                  source={{ uri: userData.profile_image_url }}
+                  source={{ uri: user.profile_image_url }}
                   style={styles.profileImage}
                 />
               ) : (
@@ -324,16 +295,15 @@ const ProfileScreen = ({ navigation }) => {
             </View>
           </TouchableOpacity>
           <Text style={styles.profileName}>
-            {userData.first_name} {userData.last_name}
+            {user.first_name} {user.last_name}
           </Text>
-          {userData.is_admin && (
+          {user.is_admin && (
             <View style={styles.adminBadge}>
               <Text style={styles.adminBadgeText}>ADMIN</Text>
             </View>
           )}
         </View>
 
-        {/* Profile Information */}
         <View style={styles.profileSection}>
           <View style={styles.infoRow}>
             <Ionicons
@@ -344,7 +314,7 @@ const ProfileScreen = ({ navigation }) => {
             />
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>Email</Text>
-              <Text style={styles.infoValue}>{userData.email}</Text>
+              <Text style={styles.infoValue}>{user.email}</Text>
             </View>
           </View>
 
@@ -357,7 +327,9 @@ const ProfileScreen = ({ navigation }) => {
             />
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>Phone</Text>
-              <Text style={styles.infoValue}>{userData.phone_number}</Text>
+              <Text style={styles.infoValue}>
+                {user.phone_number || "Not set"}
+              </Text>
             </View>
           </View>
 
@@ -370,7 +342,9 @@ const ProfileScreen = ({ navigation }) => {
             />
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>Address</Text>
-              <Text style={styles.infoValue}>{userData.location.address}</Text>
+              <Text style={styles.infoValue}>
+                {user.location?.address || "Not set"}
+              </Text>
               <TouchableOpacity
                 style={styles.changeLocationButton}
                 onPress={() => setShowLocationModal(true)}
@@ -392,13 +366,12 @@ const ProfileScreen = ({ navigation }) => {
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>Member Since</Text>
               <Text style={styles.infoValue}>
-                {formatDate(userData.created_at)}
+                {formatDate(user.created_at)}
               </Text>
             </View>
           </View>
         </View>
 
-        {/* Edit Profile Button */}
         <TouchableOpacity
           style={styles.editButton}
           onPress={() => setShowEditModal(true)}
@@ -407,7 +380,6 @@ const ProfileScreen = ({ navigation }) => {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Location Options Modal */}
       <Modal
         visible={showLocationModal}
         transparent={true}
@@ -449,7 +421,6 @@ const ProfileScreen = ({ navigation }) => {
         </View>
       </Modal>
 
-      {/* Map Selection Modal */}
       <Modal visible={showMapModal} transparent={false} animationType="slide">
         <View style={styles.mapContainer}>
           <MapView
@@ -501,7 +472,6 @@ const ProfileScreen = ({ navigation }) => {
         </View>
       </Modal>
 
-      {/* Edit Profile Modal */}
       <Modal visible={showEditModal} transparent={true} animationType="slide">
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
@@ -583,10 +553,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f8f8f8",
   },
-  loadingContainer: {
+  errorContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    padding: 16,
+  },
+  errorText: {
+    fontSize: 16,
+    color: "#c62828",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  retryButton: {
+    backgroundColor: "#3498db",
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  retryButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
   },
   scrollContainer: {
     paddingBottom: 20,
