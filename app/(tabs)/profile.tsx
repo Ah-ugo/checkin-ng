@@ -10,6 +10,7 @@ import {
   Alert,
   Image,
   Modal,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -585,6 +586,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
     backgroundColor: "#fff",
+    marginTop: Platform.OS == "android" ? 30 : 0,
   },
   headerTitle: {
     fontSize: 20,

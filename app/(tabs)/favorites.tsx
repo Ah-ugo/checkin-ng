@@ -137,7 +137,7 @@ const SavedAccommodationsScreen = () => {
         </Text>
 
         <Text style={styles.accommodationPrice}>
-          From R{item.rooms[0]?.price_per_night?.toLocaleString() || "N/A"}
+          From ₦{item.rooms[0]?.price_per_night?.toLocaleString() || "N/A"}
           /night
         </Text>
 
